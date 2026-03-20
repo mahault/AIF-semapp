@@ -1,0 +1,16 @@
+# Reference PDFs and research materials
+My research/
+
+# Compiled PDF copies at root
+/*.pdf
+
+# Python
+__pycache__/
+*.pyc
+
+# Windows artifacts
+nul
+
+# OS files
+Thumbs.db
+.DS_Store
