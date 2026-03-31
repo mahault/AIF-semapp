@@ -5,9 +5,13 @@ exp1_asd.py — Experiment 1: Artifact Standard Detection (ASD)
 Claim: Even the simplest SemApp operation benefits from active inference.
 
 A single Wave receives Artifacts and infers file standards from noisy cues.
-  - Hidden state: 1 factor, 6 states (NITF, JPEG2000, GeoTIFF, PDF, XML, UNKNOWN)
+  - Hidden states: 2 factors
+    - Factor 0: parse_status (2 states: not_parsed, parsed) — controlled by action
+    - Factor 1: standard (6 states: NITF, JPEG2000, GeoTIFF, PDF, XML, UNKNOWN)
   - Observations: 4 modalities (magic number, file extension, parse result, file size)
-  - Actions: 2 — classify vs request_parse
+  - Actions: 2 — classify (keep not_parsed) vs request_parse (transition to parsed)
+  - The parse modality is uninformative when not_parsed, diagnostic when parsed.
+    This lets EFE correctly value the epistemic benefit of requesting a parse.
   - Comparison: active inference vs rule-based priority chain vs maximum-likelihood
   - N = 500 artifacts, ~30% ambiguous (conflicting cues)
 """
@@ -30,98 +34,74 @@ NITF, JPEG2000, GEOTIFF, PDF, XML, UNKNOWN = range(6)
 N_STANDARDS = 6
 STANDARD_NAMES = ['NITF', 'JPEG2000', 'GeoTIFF', 'PDF', 'XML', 'UNKNOWN']
 
-# Observation modalities
-# Magic number: 7 outcomes (6 standards + null)
-N_MAGIC = 7
-# Extension: 8 outcomes (.ntf, .jp2, .tif, .pdf, .xml, .other, .missing, null)
-N_EXT = 8
-# Parse result: 5 outcomes (success, partial, fail, timeout, null)
-N_PARSE = 5
-# File size: 5 outcomes (tiny, small, medium, large, null)
-N_SIZE = 5
+# Parse status (hidden factor 0)
+NOT_PARSED, PARSED = 0, 1
+N_PARSE_STATUS = 2
 
-# Actions
+# Observation modalities
+N_MAGIC = 7   # 6 standards + null
+N_EXT = 8     # .ntf, .jp2, .tif, .pdf, .xml, .other, .missing, null
+N_PARSE = 7   # nitf_match, jp2_match, geotiff_match, pdf_match, xml_match, fail, null
+N_SIZE = 5    # tiny, small, medium, large, null
+
+# Actions (control factor 0: parse_status)
 CLASSIFY, REQUEST_PARSE = 0, 1
 N_ACTIONS = 2
 
 
 # ============================================================
-# Generative model builders
+# Generative model builders (1-factor versions for baselines)
 # ============================================================
-def build_A_magic():
-    """P(magic_obs | standard). Shape (7, 6).
-    Magic bytes are diagnostic but can overlap (GeoTIFF/TIFF share bytes)."""
-    # Rows: magic_NITF, magic_JP2, magic_TIFF, magic_PDF, magic_XML, magic_other, null
-    # Cols: NITF, JPEG2000, GeoTIFF, PDF, XML, UNKNOWN
+def build_A_magic_1f():
+    """P(magic_obs | standard). Shape (7, 6)."""
     A = np.array([
         [0.85, 0.01, 0.01, 0.01, 0.01, 0.02],  # magic_NITF
         [0.01, 0.82, 0.01, 0.01, 0.01, 0.02],  # magic_JP2
-        [0.02, 0.01, 0.65, 0.01, 0.01, 0.02],  # magic_TIFF (shared with GeoTIFF)
+        [0.02, 0.01, 0.65, 0.01, 0.01, 0.02],  # magic_TIFF (shared w/ GeoTIFF)
         [0.01, 0.01, 0.01, 0.85, 0.01, 0.02],  # magic_PDF
         [0.01, 0.01, 0.01, 0.01, 0.80, 0.02],  # magic_XML
         [0.05, 0.09, 0.26, 0.06, 0.11, 0.80],  # other/ambiguous
-        [0.05, 0.05, 0.05, 0.05, 0.05, 0.10],  # null (no magic found)
+        [0.05, 0.05, 0.05, 0.05, 0.05, 0.10],  # null
     ])
-    # Normalize columns
-    A = A / A.sum(axis=0, keepdims=True)
-    return A
+    return A / A.sum(axis=0, keepdims=True)
 
 
-def build_A_ext():
-    """P(ext_obs | standard). Shape (8, 6).
-    Extensions can be wrong (e.g., .tif for GeoTIFF vs plain TIFF)."""
-    # Rows: .ntf, .jp2, .tif, .pdf, .xml, .other, .missing, null
-    # Cols: NITF, JPEG2000, GeoTIFF, PDF, XML, UNKNOWN
+def build_A_ext_1f():
+    """P(ext_obs | standard). Shape (8, 6)."""
     A = np.array([
         [0.80, 0.01, 0.01, 0.01, 0.01, 0.03],  # .ntf
         [0.01, 0.78, 0.01, 0.01, 0.01, 0.03],  # .jp2
-        [0.02, 0.02, 0.70, 0.01, 0.01, 0.03],  # .tif (ambiguous for GeoTIFF)
+        [0.02, 0.02, 0.70, 0.01, 0.01, 0.03],  # .tif
         [0.01, 0.01, 0.01, 0.82, 0.01, 0.03],  # .pdf
         [0.01, 0.01, 0.01, 0.01, 0.80, 0.03],  # .xml
-        [0.08, 0.10, 0.15, 0.08, 0.08, 0.50],  # .other (wrong extension)
+        [0.08, 0.10, 0.15, 0.08, 0.08, 0.50],  # .other
         [0.05, 0.05, 0.09, 0.04, 0.06, 0.30],  # .missing
         [0.02, 0.02, 0.02, 0.02, 0.02, 0.05],  # null
     ])
-    A = A / A.sum(axis=0, keepdims=True)
-    return A
+    return A / A.sum(axis=0, keepdims=True)
 
 
-def build_A_parse():
-    """P(parse_obs | standard). Shape (5, 6).
-    Parse attempts succeed differently for each standard.
-    Note: 'null' outcome dominates before parse is requested."""
-    # Rows: success, partial, fail, timeout, null
-    # Cols: NITF, JPEG2000, GeoTIFF, PDF, XML, UNKNOWN
+def build_A_parse_diagnostic():
+    """P(parse_obs | standard) when parsed. Shape (7, 6).
+    Standard-specific parser matching: try each format's parser, see which
+    succeeds. This is how real ASD works — each parser validates headers,
+    metadata, and structure specific to its format.
+      Rows: nitf_match, jp2_match, geotiff_match, pdf_match, xml_match, fail, null
+      Cols: NITF, JP2, GeoTIFF, PDF, XML, UNKNOWN"""
     A = np.array([
-        [0.80, 0.75, 0.70, 0.82, 0.78, 0.05],  # success
-        [0.10, 0.12, 0.15, 0.08, 0.10, 0.15],  # partial
-        [0.05, 0.06, 0.08, 0.05, 0.07, 0.50],  # fail
-        [0.03, 0.05, 0.05, 0.03, 0.03, 0.20],  # timeout
-        [0.02, 0.02, 0.02, 0.02, 0.02, 0.10],  # null (not yet parsed)
+        [0.85, 0.02, 0.03, 0.02, 0.01, 0.01],  # nitf_match
+        [0.02, 0.82, 0.02, 0.02, 0.01, 0.01],  # jp2_match
+        [0.03, 0.02, 0.80, 0.02, 0.01, 0.01],  # geotiff_match
+        [0.02, 0.02, 0.02, 0.82, 0.01, 0.01],  # pdf_match
+        [0.01, 0.01, 0.01, 0.01, 0.90, 0.01],  # xml_match
+        [0.05, 0.09, 0.10, 0.09, 0.04, 0.87],  # fail
+        [0.02, 0.02, 0.02, 0.02, 0.02, 0.08],  # null
     ])
-    A = A / A.sum(axis=0, keepdims=True)
-    return A
+    return A / A.sum(axis=0, keepdims=True)
 
 
-def build_A_parse_null():
-    """Parse observation matrix when no parse has been requested.
-    Almost always returns null (uninformative)."""
-    A = np.array([
-        [0.02, 0.02, 0.02, 0.02, 0.02, 0.02],  # success
-        [0.02, 0.02, 0.02, 0.02, 0.02, 0.02],  # partial
-        [0.02, 0.02, 0.02, 0.02, 0.02, 0.02],  # fail
-        [0.02, 0.02, 0.02, 0.02, 0.02, 0.02],  # timeout
-        [0.92, 0.92, 0.92, 0.92, 0.92, 0.92],  # null
-    ])
-    A = A / A.sum(axis=0, keepdims=True)
-    return A
-
-
-def build_A_size():
-    """P(size_obs | standard). Shape (5, 6).
-    File size ranges give weak evidence about format."""
-    # Rows: tiny(<1K), small(1K-100K), medium(100K-10M), large(>10M), null
-    # Cols: NITF, JPEG2000, GeoTIFF, PDF, XML, UNKNOWN
+def build_A_size_1f():
+    """P(size_obs | standard). Shape (5, 6)."""
     A = np.array([
         [0.02, 0.02, 0.02, 0.05, 0.15, 0.15],  # tiny
         [0.08, 0.10, 0.05, 0.20, 0.40, 0.20],  # small
@@ -129,33 +109,67 @@ def build_A_size():
         [0.50, 0.38, 0.53, 0.25, 0.10, 0.15],  # large
         [0.05, 0.05, 0.05, 0.05, 0.05, 0.20],  # null
     ])
-    A = A / A.sum(axis=0, keepdims=True)
-    return A
+    return A / A.sum(axis=0, keepdims=True)
 
 
-def build_B():
-    """Transition matrix: identity (standard doesn't change). Shape (6, 6, 2).
-    Two actions but neither changes the hidden state."""
-    B = np.stack([np.eye(N_STANDARDS)] * N_ACTIONS, axis=-1)
-    return B
+# ============================================================
+# 2-factor A matrices for AI agent: A(obs | parse_status, standard)
+# ============================================================
+def _expand_A(A_1f):
+    """Expand (obs, standard) → (obs, parse_status, standard).
+    Non-parse modalities: same for both parse states."""
+    n_obs, n_std = A_1f.shape
+    A_2f = np.zeros((n_obs, N_PARSE_STATUS, n_std))
+    A_2f[:, NOT_PARSED, :] = A_1f
+    A_2f[:, PARSED, :] = A_1f
+    return A_2f
+
+
+def build_A_parse_2f():
+    """Parse observation model with parse_status factor. Shape (5, 2, 6).
+    When not_parsed: uniform (uninformative).
+    When parsed: highly diagnostic per standard."""
+    A = np.zeros((N_PARSE, N_PARSE_STATUS, N_STANDARDS))
+    A[:, NOT_PARSED, :] = 1.0 / N_PARSE          # uniform
+    A[:, PARSED, :] = build_A_parse_diagnostic()  # diagnostic
+    return A / A.sum(axis=0, keepdims=True)
+
+
+def build_B_2f():
+    """Transition matrices for 2 factors.
+    Factor 0 (parse_status): controlled by action.
+    Factor 1 (standard): identity (doesn't change)."""
+    B_parse = np.zeros((N_PARSE_STATUS, N_PARSE_STATUS, N_ACTIONS))
+    # CLASSIFY: parse status unchanged
+    B_parse[:, :, CLASSIFY] = np.eye(N_PARSE_STATUS)
+    # REQUEST_PARSE: always transition to parsed
+    B_parse[PARSED, :, REQUEST_PARSE] = 1.0
+    # Factor 1: standard doesn't change (identity, 1 dummy action)
+    B_standard = np.eye(N_STANDARDS).reshape(N_STANDARDS, N_STANDARDS, 1)
+    return [B_parse, B_standard]
 
 
 def build_C():
     """Preference vectors for each modality."""
-    # Magic: prefer clear identifications
     C_magic = np.array([1.0, 1.0, 0.8, 1.0, 1.0, -0.3, -0.5])
-    # Extension: prefer clear matches
     C_ext = np.array([0.5, 0.5, 0.5, 0.5, 0.5, -0.2, -0.3, -0.1])
-    # Parse: prefer success, penalize failure/timeout
-    C_parse = np.array([1.0, 0.3, -1.5, -1.0, -0.1])
-    # Size: neutral
+    C_parse = np.array([1.0, 1.0, 1.0, 1.0, 1.0, -1.5, -0.1])  # match=good, fail=bad
     C_size = np.array([0.0, 0.0, 0.0, 0.0, -0.1])
     return [C_magic, C_ext, C_parse, C_size]
 
 
-def build_D():
-    """Empirical prior over file standards."""
-    # NITF and GeoTIFF are common in IC context
+def build_D_2f():
+    """Priors for 2 factors.
+    Factor 0: parse_status — start not_parsed.
+    Factor 1: standard — empirical prior."""
+    D_parse = np.array([0.99, 0.01])
+    D_standard = np.array([0.25, 0.15, 0.20, 0.15, 0.15, 0.10])
+    D_standard = D_standard / D_standard.sum()
+    return [D_parse, D_standard]
+
+
+def build_D_standard():
+    """1-factor prior over standards (for baselines)."""
     D = np.array([0.25, 0.15, 0.20, 0.15, 0.15, 0.10])
     return D / D.sum()
 
@@ -168,31 +182,20 @@ class ArtifactGenerator:
 
     def __init__(self, seed=42, ambiguity_rate=0.30):
         self.rng = np.random.RandomState(seed)
-        self.A_magic = build_A_magic()
-        self.A_ext = build_A_ext()
-        self.A_parse = build_A_parse()
-        self.A_size = build_A_size()
-        self.D = build_D()
+        self.A_magic = build_A_magic_1f()
+        self.A_ext = build_A_ext_1f()
+        self.A_parse = build_A_parse_diagnostic()
+        self.A_size = build_A_size_1f()
+        self.D = build_D_standard()
         self.ambiguity_rate = ambiguity_rate
 
     def generate(self, n=500):
-        """Generate n artifacts with observations.
-
-        Returns
-        -------
-        artifacts : list of dict
-            Each with 'true_standard', 'is_ambiguous', 'obs_magic', 'obs_ext',
-            'obs_size', 'obs_parse_if_requested'.
-        """
         artifacts = []
         for i in range(n):
             true_std = self.rng.choice(N_STANDARDS, p=self.D)
-
-            # Decide if ambiguous
             is_ambiguous = self.rng.random() < self.ambiguity_rate
 
             if is_ambiguous:
-                # Create conflicting cues
                 obs_magic = self._sample_confusing_magic(true_std)
                 obs_ext = self._sample_confusing_ext(true_std)
             else:
@@ -200,8 +203,6 @@ class ArtifactGenerator:
                 obs_ext = self.rng.choice(N_EXT, p=self.A_ext[:, true_std])
 
             obs_size = self.rng.choice(N_SIZE, p=self.A_size[:, true_std])
-
-            # Parse result is only available if requested
             obs_parse = self.rng.choice(N_PARSE, p=self.A_parse[:, true_std])
 
             artifacts.append({
@@ -215,25 +216,19 @@ class ArtifactGenerator:
         return artifacts
 
     def _sample_confusing_magic(self, true_std):
-        """Sample magic bytes that may point to wrong standard."""
-        # 40% chance of correct, 40% wrong standard, 20% other/null
+        """Ambiguous magic: corrupted, missing, or genuinely overlapping bytes.
+        No wrong-standard sampling — ambiguity means uncertainty, not deception."""
         r = self.rng.random()
-        if r < 0.40:
+        if r < 0.30:
             return self.rng.choice(N_MAGIC, p=self.A_magic[:, true_std])
-        elif r < 0.80:
-            wrong = self.rng.choice([s for s in range(N_STANDARDS) if s != true_std])
-            return self.rng.choice(N_MAGIC, p=self.A_magic[:, wrong])
         else:
-            return self.rng.choice([5, 6])  # other or null
+            return self.rng.choice([5, 6])  # other (corrupted) or null (missing)
 
     def _sample_confusing_ext(self, true_std):
-        """Sample extension that may conflict."""
+        """Ambiguous extension: missing, wrong, or generic."""
         r = self.rng.random()
-        if r < 0.35:
+        if r < 0.25:
             return self.rng.choice(N_EXT, p=self.A_ext[:, true_std])
-        elif r < 0.75:
-            wrong = self.rng.choice([s for s in range(N_STANDARDS) if s != true_std])
-            return self.rng.choice(N_EXT, p=self.A_ext[:, wrong])
         else:
             return self.rng.choice([5, 6, 7])  # other, missing, null
 
@@ -243,10 +238,7 @@ class ArtifactGenerator:
 # ============================================================
 def build_rule_based():
     """Priority chain: magic > extension > default to UNKNOWN."""
-
-    # Maps magic obs index to standard
     magic_map = {0: NITF, 1: JPEG2000, 2: GEOTIFF, 3: PDF, 4: XML}
-    # Maps ext obs index to standard
     ext_map = {0: NITF, 1: JPEG2000, 2: GEOTIFF, 3: PDF, 4: XML}
 
     def rule_magic(obs):
@@ -261,103 +253,91 @@ def build_rule_based():
             return (ext_map[e], 0.70)
         return None
 
-    def rule_parse(obs):
-        """If parse was done and succeeded, use size heuristic."""
-        p = obs[2]
-        if p == 0:  # success
-            return (UNKNOWN, 0.50)  # parse succeeded but doesn't tell us which standard
-        return None
-
     def rule_default(obs):
         return (UNKNOWN, 0.30)
 
-    return RuleBasedClassifier([rule_magic, rule_ext, rule_parse, rule_default])
+    return RuleBasedClassifier([rule_magic, rule_ext, rule_default])
 
 
 # ============================================================
 # Run experiment
 # ============================================================
 def run_experiment_1(seed=42):
-    """Run Experiment 1: Artifact Standard Detection.
-
-    Returns
-    -------
-    results : dict with keys 'ai', 'rule', 'ml', each containing metrics.
-    """
+    """Run Experiment 1: Artifact Standard Detection."""
     print("=== Experiment 1: Artifact Standard Detection ===")
-    rng = np.random.RandomState(seed)
 
     # Generate artifacts
     gen = ArtifactGenerator(seed=seed, ambiguity_rate=0.30)
     artifacts = gen.generate(n=500)
 
-    # Build generative model
-    A_magic = build_A_magic()
-    A_ext = build_A_ext()
-    A_parse = build_A_parse()
-    A_parse_null = build_A_parse_null()
-    A_size = build_A_size()
-    C = build_C()
-    D = build_D()
-    B = build_B()
+    # Build 2-factor generative model for AI agent
+    A_magic_1f = build_A_magic_1f()
+    A_ext_1f = build_A_ext_1f()
+    A_size_1f = build_A_size_1f()
 
-    # --- Active Inference agent ---
-    # Use parse_null initially; parse becomes informative after request_parse
+    A_magic_2f = _expand_A(A_magic_1f)
+    A_ext_2f = _expand_A(A_ext_1f)
+    A_parse_2f = build_A_parse_2f()
+    A_size_2f = _expand_A(A_size_1f)
+
+    B_2f = build_B_2f()
+    C = build_C()
+    D_2f = build_D_2f()
+
+    # --- Active Inference agent (2-factor: parse_status × standard) ---
     ai_wave = InferenceWave(
-        A_np=[A_magic, A_ext, A_parse_null, A_size],
-        B_np=[B],
+        A_np=[A_magic_2f, A_ext_2f, A_parse_2f, A_size_2f],
+        B_np=B_2f,
         C_np=C,
-        D_np=[D],
-        num_controls=[N_ACTIONS],
+        D_np=D_2f,
+        num_controls=[N_ACTIONS, 1],
         control_fac_idx=[0],
         learn=False,
-        gamma=8.0,
+        gamma=16.0,
         seed=seed,
         use_states_info_gain=True,
     )
 
-    # --- ML baseline (uses null-parse model like AI Phase 1) ---
-    ml_clf = MLClassifier([A_magic, A_ext, A_parse_null, A_size])
+    # --- ML baseline (1-factor, no parse access) ---
+    # ML sees null parse = uniform, effectively no parse info
+    A_parse_null_1f = np.full((N_PARSE, N_STANDARDS), 1.0 / N_PARSE)
+    ml_clf = MLClassifier([A_magic_1f, A_ext_1f, A_parse_null_1f, A_size_1f])
 
     # --- Rule-based baseline ---
     rule_clf = build_rule_based()
 
     results = {
         'ai': {'predictions': [], 'confidences': [], 'correct': [],
-                'vfe': [], 'actions': [], 'belief_examples': []},
+                'vfe': [], 'actions': [], 'parse_rate': 0},
         'rule': {'predictions': [], 'confidences': [], 'correct': []},
         'ml': {'predictions': [], 'confidences': [], 'correct': []},
     }
 
-    # Track a specific ambiguous case for belief evolution plot
-    geotiff_example_idx = None
+    n_parsed = 0
 
     for i, art in enumerate(artifacts):
         true_std = art['true_standard']
+        # Initial observation: null parse (index 4)
         obs_initial = [art['obs_magic'], art['obs_ext'], N_PARSE - 1, art['obs_size']]
-        # obs_initial has null parse (index 4)
 
         # --- Active inference: two-phase ---
-        # Phase 1: observe cheap cues
         ai_wave.reset_history()
-        qs_np, q_pi, efe, action = ai_wave.infer(obs_initial)
-        vfe1 = ai_wave.vfe_history[-1]
 
-        # Phase 2: if agent chose request_parse, update with parse result
+        # Phase 1: observe cheap cues (parse_status = not_parsed)
+        qs_np, q_pi, efe, action = ai_wave.infer(obs_initial)
+
+        # Phase 2: if agent chose request_parse, get parse result
         if action == REQUEST_PARSE:
+            n_parsed += 1
             obs_with_parse = [art['obs_magic'], art['obs_ext'],
                               art['obs_parse_if_requested'], art['obs_size']]
-            # Update the Wave's A matrix view for this step
-            old_A = ai_wave.A_np[2]
-            ai_wave.A_np[2] = A_parse
-            qs_np, _, _, _ = ai_wave.infer(obs_with_parse, empirical_prior=[qs_np[0]])
-            ai_wave.A_np[2] = old_A  # restore
-        else:
-            # Classify based on Phase 1 only
-            pass
+            # Empirical prior: parse_status → parsed, standard from Phase 1
+            emp_prior = [np.array([0.0, 1.0]), qs_np[1].copy()]
+            qs_np, _, _, _ = ai_wave.infer(obs_with_parse, empirical_prior=emp_prior)
 
-        ai_pred = int(np.argmax(qs_np[0]))
-        ai_conf = float(qs_np[0][ai_pred])
+        # Prediction from standard factor (factor 1)
+        ai_pred = int(np.argmax(qs_np[1]))
+        ai_conf = float(qs_np[1][ai_pred])
         ai_correct = (ai_pred == true_std)
 
         results['ai']['predictions'].append(ai_pred)
@@ -366,33 +346,27 @@ def run_experiment_1(seed=42):
         results['ai']['vfe'].append(ai_wave.vfe_history[-1])
         results['ai']['actions'].append(action)
 
-        # Track GeoTIFF ambiguous example
-        if (true_std == GEOTIFF and art['is_ambiguous']
-                and geotiff_example_idx is None):
-            geotiff_example_idx = i
-            results['ai']['belief_examples'] = list(ai_wave.belief_history)
-
-        # --- Rule-based (no parse access — uses cheap cues only) ---
+        # --- Rule-based ---
         obs_for_rule = [art['obs_magic'], art['obs_ext'],
-                        N_PARSE - 1, art['obs_size']]  # null parse
+                        N_PARSE - 1, art['obs_size']]
         rule_pred, rule_conf = rule_clf.classify(obs_for_rule)
         rule_correct = (rule_pred == true_std)
         results['rule']['predictions'].append(rule_pred)
         results['rule']['confidences'].append(rule_conf)
         results['rule']['correct'].append(rule_correct)
 
-        # --- ML baseline (no parse access — uses cheap cues only) ---
+        # --- ML baseline ---
         obs_for_ml = [art['obs_magic'], art['obs_ext'],
-                      N_PARSE - 1, art['obs_size']]  # null parse
+                      N_PARSE - 1, art['obs_size']]
         ml_pred, ml_conf = ml_clf.classify(obs_for_ml)
         ml_correct = (ml_pred == true_std)
         results['ml']['predictions'].append(ml_pred)
         results['ml']['confidences'].append(ml_conf)
         results['ml']['correct'].append(ml_correct)
 
-    # Compute summary metrics
-    artifacts_arr = artifacts
-    is_ambiguous = np.array([a['is_ambiguous'] for a in artifacts_arr])
+    # Summary metrics
+    is_ambiguous = np.array([a['is_ambiguous'] for a in artifacts])
+    results['ai']['parse_rate'] = n_parsed / len(artifacts)
 
     for method in ['ai', 'rule', 'ml']:
         correct = np.array(results[method]['correct'])
@@ -402,7 +376,8 @@ def run_experiment_1(seed=42):
 
     print(f"  AI:   all={results['ai']['acc_all']:.3f}, "
           f"ambig={results['ai']['acc_ambiguous']:.3f}, "
-          f"clear={results['ai']['acc_clear']:.3f}")
+          f"clear={results['ai']['acc_clear']:.3f}, "
+          f"parse_rate={results['ai']['parse_rate']:.2f}")
     print(f"  Rule: all={results['rule']['acc_all']:.3f}, "
           f"ambig={results['rule']['acc_ambiguous']:.3f}, "
           f"clear={results['rule']['acc_clear']:.3f}")
@@ -410,10 +385,8 @@ def run_experiment_1(seed=42):
           f"ambig={results['ml']['acc_ambiguous']:.3f}, "
           f"clear={results['ml']['acc_clear']:.3f}")
 
-    # Store metadata
     results['artifacts'] = artifacts
     results['is_ambiguous'] = is_ambiguous
-    results['geotiff_example_idx'] = geotiff_example_idx
 
     return results
 
@@ -422,7 +395,7 @@ def run_experiment_1(seed=42):
 # Figure generation
 # ============================================================
 def plot_experiment_1(results):
-    """Generate 2×2 figure for Experiment 1."""
+    """Generate 2x2 figure for Experiment 1."""
     setup_figure_style()
     fig, axes = plt.subplots(2, 2, figsize=(12, 9))
 
@@ -436,9 +409,9 @@ def plot_experiment_1(results):
     acc_amb = [results[m]['acc_ambiguous'] for m in ['ai', 'rule', 'ml']]
     acc_clr = [results[m]['acc_clear'] for m in ['ai', 'rule', 'ml']]
 
-    bars1 = ax.bar(x - width, acc_all, width, label='All', color='steelblue')
-    bars2 = ax.bar(x, acc_amb, width, label='Ambiguous', color='coral')
-    bars3 = ax.bar(x + width, acc_clr, width, label='Clear', color='mediumseagreen')
+    ax.bar(x - width, acc_all, width, label='All', color='steelblue')
+    ax.bar(x, acc_amb, width, label='Ambiguous', color='coral')
+    ax.bar(x + width, acc_clr, width, label='Clear', color='mediumseagreen')
 
     ax.set_ylabel('Accuracy')
     ax.set_title('(a) Classification accuracy by method and ambiguity')

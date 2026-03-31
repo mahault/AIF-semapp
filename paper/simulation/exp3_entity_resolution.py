@@ -46,10 +46,17 @@ N_TEMPORAL = 4   # correlated, weakly_corr, uncorrelated, null
 OBSERVE, LINK_SAME, LINK_DIFFERENT = 0, 1, 2
 N_ACTIONS = 3
 
-N_STEPS = 90
+# Which entities appear in which domain (domain knowledge)
+DOMAIN_ENTITIES = {
+    GEOINT: {0, 2, 3, 4, 5},
+    SIGINT: {0, 1, 3, 6},
+    HUMINT: {1, 2, 4, 7},
+}
+
+N_STEPS = 120
 
 # Confidence threshold for link assertions
-LINK_CONFIDENCE_THRESHOLD = 0.55
+LINK_CONFIDENCE_THRESHOLD = 0.60
 
 
 # ============================================================
@@ -152,10 +159,19 @@ def build_A_feature(domain_expertise=None):
     Expert Waves have sharper discrimination for their domain."""
     A = np.zeros((N_FEATURE, N_ENTITIES, N_DOMAIN_SOURCES))
 
-    # Entity-specific feature patterns (which pattern dominates)
+    # Entity-specific feature patterns -- designed so each cross-domain
+    # entity shares its pattern with a single-domain entity, creating
+    # confusion pairs that can only be resolved through cross-domain
+    # cooperation (belief propagation through stigmergic links).
+    #
+    # Confusion pairs and their resolution mechanism:
+    #   (0,5) in GEOINT: Entity 0 unique in SIGINT → propagation resolves
+    #   (3,4) in GEOINT: Entity 3 unique in SIGINT, Entity 4 unique in HUMINT
+    #   (1,6) in SIGINT: temporal cross/single + mutual propagation with HUMINT
+    #   (1,7) in HUMINT: temporal cross/single + mutual propagation with SIGINT
     entity_patterns = {
-        0: 0, 1: 1, 2: 2, 3: 3,   # cross-domain entities: distinctive
-        4: 0, 5: 1, 6: 2, 7: 3,   # single-domain: share patterns with cross-domain
+        0: 0, 1: 1, 2: 2, 3: 3,   # cross-domain entities
+        4: 3, 5: 0, 6: 1, 7: 1,   # single-domain: shares with cross-domain
     }
 
     for e in range(N_ENTITIES):
@@ -163,18 +179,18 @@ def build_A_feature(domain_expertise=None):
         for d in range(N_DOMAIN_SOURCES):
             if domain_expertise is not None and d == domain_expertise:
                 # Expert: high precision for own-domain entities
-                A[main_pattern, e, d] = 0.60
+                A[main_pattern, e, d] = 0.70
                 for p in range(4):
                     if p != main_pattern:
-                        A[p, e, d] = 0.08
-                A[4, e, d] = 0.08  # ambiguous
+                        A[p, e, d] = 0.06
+                A[4, e, d] = 0.06  # ambiguous
             else:
                 # Non-expert: moderate precision
-                A[main_pattern, e, d] = 0.35
+                A[main_pattern, e, d] = 0.40
                 for p in range(4):
                     if p != main_pattern:
-                        A[p, e, d] = 0.12
-                A[4, e, d] = 0.17
+                        A[p, e, d] = 0.11
+                A[4, e, d] = 0.16
 
     A = A / A.sum(axis=0, keepdims=True)
     return A
@@ -197,19 +213,19 @@ def build_A_domsig():
 def build_A_crosslink(link_available=False):
     """P(cross_link | entity, domain). Shape (3, 8, 3).
     Cross-domain entities more likely to have links discovered.
-    Weakened discrimination to increase reliance on cooperation."""
+    Moderate discrimination between cross and single-domain."""
     A = np.zeros((N_CROSSLINK, N_ENTITIES, N_DOMAIN_SOURCES))
     for e in range(N_ENTITIES):
         is_cross = e < 5
         for d in range(N_DOMAIN_SOURCES):
             if link_available and is_cross:
-                A[0, e, d] = 0.35  # link_found (was 0.50)
-                A[1, e, d] = 0.20
-                A[2, e, d] = 0.45  # null
+                A[0, e, d] = 0.45  # link_found
+                A[1, e, d] = 0.15
+                A[2, e, d] = 0.40  # null
             elif link_available and not is_cross:
-                A[0, e, d] = 0.12
-                A[1, e, d] = 0.35
-                A[2, e, d] = 0.53
+                A[0, e, d] = 0.08
+                A[1, e, d] = 0.42
+                A[2, e, d] = 0.50
             else:
                 A[0, e, d] = 0.05
                 A[1, e, d] = 0.10
@@ -220,22 +236,24 @@ def build_A_crosslink(link_available=False):
 
 def build_A_temporal():
     """P(temporal_obs | entity, domain). Shape (4, 8, 3).
-    Weakened discrimination between cross-domain and single-domain entities
-    so that cooperation (belief propagation) is needed to resolve ambiguity."""
+    Moderate discrimination between cross-domain and single-domain entities.
+    Cross-domain entities show stronger temporal correlation (co-occurrence
+    across domains). This helps distinguish confusion pairs like (0,5) where
+    entity 0 is cross-domain and entity 5 is single-domain."""
     A = np.zeros((N_TEMPORAL, N_ENTITIES, N_DOMAIN_SOURCES))
     for e in range(N_ENTITIES):
         is_cross = e < 5
         for d in range(N_DOMAIN_SOURCES):
             if is_cross:
-                A[0, e, d] = 0.30
-                A[1, e, d] = 0.25
-                A[2, e, d] = 0.20
-                A[3, e, d] = 0.25
+                A[0, e, d] = 0.35   # correlated
+                A[1, e, d] = 0.25   # weakly_corr
+                A[2, e, d] = 0.20   # uncorrelated
+                A[3, e, d] = 0.20   # null
             else:
-                A[0, e, d] = 0.18
-                A[1, e, d] = 0.22
-                A[2, e, d] = 0.32
-                A[3, e, d] = 0.28
+                A[0, e, d] = 0.15   # correlated
+                A[1, e, d] = 0.20   # weakly_corr
+                A[2, e, d] = 0.35   # uncorrelated
+                A[3, e, d] = 0.30   # null
     A = A / A.sum(axis=0, keepdims=True)
     return A
 
@@ -257,7 +275,12 @@ def build_C_wave(domain):
 
 
 def build_D_wave(domain):
-    D_entity = np.ones(N_ENTITIES) / N_ENTITIES
+    """Domain-specific priors. Entity prior reflects domain knowledge:
+    entities known to appear in this domain get higher prior mass."""
+    D_entity = np.ones(N_ENTITIES) * 0.02
+    for e in DOMAIN_ENTITIES[domain]:
+        D_entity[e] = 0.18
+    D_entity = D_entity / D_entity.sum()
     D_domain = np.full(N_DOMAIN_SOURCES, 0.1)
     D_domain[domain] = 0.8
     D_domain = D_domain / D_domain.sum()
@@ -349,7 +372,7 @@ def run_waves_on_fabric(waves, fabric, n_steps, seed, coupling=True):
                     if linked_posts:
                         avg_linked = np.mean(linked_posts, axis=0)
                         avg_linked /= avg_linked.sum() + 1e-16
-                        entity_prior = 0.80 * emp_prior[0] + 0.20 * avg_linked
+                        entity_prior = 0.90 * emp_prior[0] + 0.10 * avg_linked
                         entity_prior /= entity_prior.sum() + 1e-16
                         emp_prior = [entity_prior, emp_prior[1].copy()]
 
@@ -368,7 +391,7 @@ def run_waves_on_fabric(waves, fabric, n_steps, seed, coupling=True):
             # Only assert positive links: negative links propagate too much
             # noise through the shared fabric.  Delayed until beliefs have
             # partially converged (step >= 20).
-            if coupling and other_sign is not None and step >= 35:
+            if coupling and other_sign is not None and step >= 50:
                 my_entity = entity_pred
                 my_confidence = float(qs_np[0][my_entity])
 

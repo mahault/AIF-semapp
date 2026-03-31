@@ -19,9 +19,11 @@ from common import (
     setup_figure_style, save_figure, FIG_DIR,
 )
 from exp1_asd import (
-    ArtifactGenerator, build_A_magic, build_A_ext, build_A_parse,
-    build_A_parse_null, build_A_size, build_C as build_C_asd,
-    build_D as build_D_asd, build_B as build_B_asd,
+    ArtifactGenerator,
+    build_A_magic_1f, build_A_ext_1f, build_A_parse_diagnostic,
+    build_A_parse_2f, _expand_A, build_A_size_1f,
+    build_C as build_C_asd, build_B_2f as build_B_asd,
+    build_D_2f as build_D_asd,
     N_STANDARDS, N_ACTIONS as N_ASD_ACTIONS, CLASSIFY, REQUEST_PARSE,
     N_PARSE,
 )
@@ -48,14 +50,7 @@ import matplotlib.pyplot as plt
 # Integrated Fabric
 # ============================================================
 class IntegratedFabric:
-    """Integrated fabric combining ASD, disambiguation, and entity resolution.
-
-    Tracks uncertainty (posterior entropy) at multiple scales:
-      1. Element-level (per artifact/sign)
-      2. Cluster-level (groups of related elements)
-      3. Domain-level (per processing domain)
-      4. Fabric-level (global)
-    """
+    """Integrated fabric combining ASD, disambiguation, and entity resolution."""
 
     def __init__(self, n_artifacts=20, n_disambig=50, n_entity=30):
         self.n_artifacts = n_artifacts
@@ -63,10 +58,6 @@ class IntegratedFabric:
         self.n_entity = n_entity
         self.n_total = n_artifacts + n_disambig + n_entity
 
-        # Element uncertainty: initialize to maximum entropy
-        # Artifacts: log(6) = 1.79 (6 standards)
-        # Signs: log(5) = 1.61 (5 concepts)
-        # Entities: log(8) = 2.08 (8 entities)
         self.element_uncertainty = np.zeros(self.n_total)
         self.element_uncertainty[:n_artifacts] = np.log(N_STANDARDS)
         self.element_uncertainty[n_artifacts:n_artifacts + n_disambig] = np.log(N_CONCEPTS)
@@ -78,18 +69,15 @@ class IntegratedFabric:
             ['entity'] * n_entity
         )
 
-        # Cluster assignments (updated during processing)
-        self.n_clusters = 6 + 5 + 8  # ASD(6) + disambig(5) + entity(8)
+        self.n_clusters = 6 + 5 + 8
         self.element_cluster = np.zeros(self.n_total, dtype=int)
 
-        # Domain assignments
-        self.n_domains = 4  # format, content, intelligence_a, intelligence_b
+        self.n_domains = 4
         self.element_domain = np.zeros(self.n_total, dtype=int)
         self.element_domain[:n_artifacts] = 0
         self.element_domain[n_artifacts:n_artifacts + n_disambig] = 1
 
     def update(self, idx, uncertainty, cluster=None):
-        """Update element uncertainty and optionally cluster assignment."""
         self.element_uncertainty[idx] = uncertainty
         if cluster is not None:
             self.element_cluster[idx] = cluster
@@ -126,7 +114,7 @@ def run_experiment_4(seed=42):
 
     fabric = IntegratedFabric(n_artifacts=20, n_disambig=50, n_entity=30)
 
-    # Pre-assign entity domain memberships so initial state is correct
+    # Pre-assign entity domain memberships
     er_fabric = EntityFabric(seed=seed)
     base_idx = fabric.n_artifacts + fabric.n_disambig
     for s in range(fabric.n_entity):
@@ -145,25 +133,17 @@ def run_experiment_4(seed=42):
     domain_history.append(fabric.get_domain_uncertainty())
     fabric_history.append(fabric.get_fabric_uncertainty())
 
-    # === Phase 1: ASD ===
+    # === Phase 1: ASD (2-factor model) ===
     print("  Phase 1: Artifact Standard Detection...")
     gen_asd = ArtifactGenerator(seed=seed, ambiguity_rate=0.30)
     artifacts = gen_asd.generate(n=fabric.n_artifacts)
 
-    A_magic = build_A_magic()
-    A_ext = build_A_ext()
-    A_parse = build_A_parse()
-    A_parse_null = build_A_parse_null()
-    A_size = build_A_size()
-    B_asd = build_B_asd()
-    C_asd = build_C_asd()
-    D_asd = build_D_asd()
-
     asd_wave = InferenceWave(
-        A_np=[A_magic, A_ext, A_parse_null, A_size],
-        B_np=[B_asd], C_np=C_asd, D_np=[D_asd],
-        num_controls=[N_ASD_ACTIONS], control_fac_idx=[0],
-        learn=False, gamma=8.0, seed=seed,
+        A_np=[_expand_A(build_A_magic_1f()), _expand_A(build_A_ext_1f()),
+              build_A_parse_2f(), _expand_A(build_A_size_1f())],
+        B_np=build_B_asd(), C_np=build_C_asd(), D_np=build_D_asd(),
+        num_controls=[N_ASD_ACTIONS, 1], control_fac_idx=[0],
+        learn=False, gamma=16.0, seed=seed,
         use_states_info_gain=True,
     )
 
@@ -174,14 +154,12 @@ def run_experiment_4(seed=42):
         if action == REQUEST_PARSE:
             obs_parsed = [art['obs_magic'], art['obs_ext'],
                           art['obs_parse_if_requested'], art['obs_size']]
-            old_A = asd_wave.A_np[2]
-            asd_wave.A_np[2] = A_parse
-            qs_np, _, _, _ = asd_wave.infer(obs_parsed, empirical_prior=[qs_np[0]])
-            asd_wave.A_np[2] = old_A
+            emp_prior = [np.array([0.0, 1.0]), qs_np[1].copy()]
+            qs_np, _, _, _ = asd_wave.infer(obs_parsed, empirical_prior=emp_prior)
 
-        # Posterior entropy = uncertainty
-        uncertainty = entropy_H(qs_np[0])
-        pred = int(np.argmax(qs_np[0]))
+        # Uncertainty from standard factor (factor 1)
+        uncertainty = entropy_H(qs_np[1])
+        pred = int(np.argmax(qs_np[1]))
         fabric.update(i, uncertainty, cluster=pred)
 
         element_history.append(fabric.element_uncertainty.copy())
@@ -213,7 +191,6 @@ def run_experiment_4(seed=42):
         obs = [sign['obs_sig'], N_ASSOC - 1, sign['obs_dmcue']]
         qs_np, _, _, _ = dis_wave.infer(obs)
 
-        # At steps 1+, only association is new evidence
         A_sig_u = np.ones_like(A_sig) / A_sig.shape[0]
         A_dmcue_u = np.ones_like(A_dmcue) / A_dmcue.shape[0]
         for step in range(MAX_STEPS):
@@ -224,7 +201,6 @@ def run_experiment_4(seed=42):
             obs = [sign['obs_sig'], sign['assoc_sequence'][step], sign['obs_dmcue']]
             qs_np, _, _, _ = dis_wave.infer(obs, empirical_prior=qs_np)
 
-        # Posterior entropy over concept factor
         uncertainty = entropy_H(qs_np[0])
         pred = int(np.argmax(qs_np[0]))
         elem_idx = fabric.n_artifacts + i
@@ -237,8 +213,6 @@ def run_experiment_4(seed=42):
 
     # === Phase 3: Entity Resolution ===
     print("  Phase 3: Entity Resolution...")
-    # er_fabric and base_idx already created above for domain assignments
-
     er_waves = []
     for dom in range(N_DOMAIN_SOURCES):
         wave = InferenceWave(
@@ -255,8 +229,6 @@ def run_experiment_4(seed=42):
         )
         er_waves.append(wave)
 
-    # Run entity resolution step by step with belief accumulation
-    # Matches exp3: systematic cycling, belief propagation, delayed coupling
     rng = np.random.RandomState(seed)
     n_waves = len(er_waves)
     sign_posteriors = {}
@@ -268,7 +240,6 @@ def run_experiment_4(seed=42):
                 continue
             sign_idx = int(domain_signs[step % len(domain_signs)])
 
-            # Systematic cross-domain cycling (matches exp3)
             other_domain_signs = np.where(er_fabric.sign_domain != dom)[0]
             if len(other_domain_signs) > 0:
                 cycle_idx = (step * n_waves + w_idx) % len(other_domain_signs)
@@ -296,21 +267,20 @@ def run_experiment_4(seed=42):
                     if linked_posts:
                         avg_linked = np.mean(linked_posts, axis=0)
                         avg_linked /= avg_linked.sum() + 1e-16
-                        entity_prior = 0.80 * emp_prior[0] + 0.20 * avg_linked
+                        entity_prior = 0.90 * emp_prior[0] + 0.10 * avg_linked
                         entity_prior /= entity_prior.sum() + 1e-16
                         emp_prior = [entity_prior, emp_prior[1].copy()]
 
             qs_np, _, _, action = wave.infer(obs, empirical_prior=emp_prior)
             sign_posteriors[sign_idx] = [q.copy() for q in qs_np]
 
-            # Update fabric uncertainty
             uncertainty = entropy_H(qs_np[0])
             pred = int(np.argmax(qs_np[0]))
             elem_idx = base_idx + sign_idx
             fabric.update(elem_idx, uncertainty, cluster=11 + pred)
 
-            # Confidence-gated stigmergic coupling (LINK_SAME only, delayed)
-            if other_sign is not None and step >= 35:
+            # Confidence-gated stigmergic coupling (matches exp3)
+            if other_sign is not None and step >= 50:
                 my_conf = float(qs_np[0][pred])
                 other_post = sign_posteriors.get(int(other_sign), None)
                 if other_post is not None:
@@ -360,15 +330,13 @@ def plot_experiment_4(results):
     fabric_u = results['fabric_uncertainty']
     n_art = results['n_artifacts']
     n_dis = results['n_disambig']
-    n_ent = results['n_entity']
     n_steps = len(fabric_u)
     ts = np.arange(n_steps)
 
-    # Phase boundaries
     phase1_end = n_art + 1
     phase2_end = phase1_end + n_dis
 
-    # (a) Element-level uncertainty (representative elements)
+    # (a) Element-level uncertainty
     ax = axes[0]
     art_indices = [0, 5, 10, 15]
     sign_indices = [n_art + 0, n_art + 15, n_art + 30]

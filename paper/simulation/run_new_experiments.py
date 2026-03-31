@@ -47,7 +47,7 @@ def main():
 
     # Experiment 3
     t0 = time.time()
-    results_3 = run_experiment_3(seed=42)
+    results_3 = run_experiment_3(base_seed=42)
     plot_experiment_3(results_3)
     print(f"  Time: {time.time() - t0:.1f}s\n")
 
