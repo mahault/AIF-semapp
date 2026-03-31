@@ -6,16 +6,24 @@ Computational demonstration for:
 "The Semiotic Fabric as Cognitive Substrate: Decentralized Active Inference
 Through Nested Markov Blankets in Ultra-Large-Scale Data Architecture"
 
-Self-contained discrete active inference using numpy, following
-Parr, Pezzulo & Friston (2022).
+Uses pymdp (inferactively-pymdp v1.0, JAX backend) for discrete active
+inference with parameter learning.  Process Waves navigate a 5x5 semiotic
+fabric, sense semantic and domain signals, and enrich cells — driven by
+expected free energy minimization.
 
-Process Waves navigate a 5x5 semiotic fabric, sense semantic and domain
-signals, and enrich cells — driven by expected free energy minimization
-with proper 2-step policy evaluation.
+Agent design:
+  - State factors : semantic_state(3) × domain(3)
+  - Observations  : semantic_obs(4), assoc_obs(3), domain_cue(4)
+  - Control       : enrich_action(2)  [OBSERVE / ENRICH]
+  - Movement      : spatial EFE evaluation over candidate cells (external)
+  - Learning      : learn_A (observation model), learn_B (transitions)
 """
 
 import numpy as np
 from itertools import product
+import jax.numpy as jnp
+import jax.random as jr
+from pymdp.agent import Agent
 
 # ============================================================
 # Constants
@@ -30,7 +38,6 @@ GEOINT, SIGINT, OSINT = 0, 1, 2
 N_DOM = 3
 DOMAIN_NAMES = ["GEOINT", "SIGINT", "OSINT"]
 
-# Observation sizes
 N_OBS_SEM = 4       # none / hint / match / contradiction
 N_OBS_ASSOC = 3     # none / consistent / inconsistent
 N_OBS_DOM = 4       # dom0 / dom1 / dom2 / ambiguous
@@ -43,24 +50,6 @@ UP, DOWN, LEFT, RIGHT, STAY = range(5)
 OBSERVE, ENRICH_ACT = 0, 1
 MOVE_NAMES = ["UP", "DOWN", "LEFT", "RIGHT", "STAY"]
 N_MOVE = 5
-N_ENRICH = 2
-COMBINED = list(product(range(N_MOVE), range(N_ENRICH)))
-N_ACTIONS = len(COMBINED)
-
-
-def log_s(x):
-    return np.log(np.maximum(x, 1e-16))
-
-def softmax(x, temp=1.0):
-    e = np.exp(temp * (x - np.max(x)))
-    return e / e.sum()
-
-def entropy_H(p):
-    p = np.asarray(p, dtype=float)
-    return -np.sum(p * log_s(p))
-
-def kl_div(q, p):
-    return np.sum(q * (log_s(q) - log_s(p)))
 
 
 # ============================================================
@@ -74,638 +63,498 @@ def rc_to_idx(r, c):
 
 def step_cell(idx, move):
     r, c = idx_to_rc(idx)
-    if move == UP:    r = max(0, r - 1)
-    elif move == DOWN:  r = min(GRID_N - 1, r + 1)
-    elif move == LEFT:  c = max(0, c - 1)
-    elif move == RIGHT: c = min(GRID_N - 1, c + 1)
+    if move == UP:    r = max(r - 1, 0)
+    elif move == DOWN:  r = min(r + 1, GRID_N - 1)
+    elif move == LEFT:  c = max(c - 1, 0)
+    elif move == RIGHT: c = min(c + 1, GRID_N - 1)
     return rc_to_idx(r, c)
 
-def get_neighbors(idx):
+def neighbors(idx):
     r, c = idx_to_rc(idx)
-    nb = {}
-    if r > 0:         nb['N'] = rc_to_idx(r-1, c)
-    if r < GRID_N-1:  nb['S'] = rc_to_idx(r+1, c)
-    if c < GRID_N-1:  nb['E'] = rc_to_idx(r, c+1)
-    if c > 0:         nb['W'] = rc_to_idx(r, c-1)
-    return nb
+    nbs = []
+    if r > 0:            nbs.append(rc_to_idx(r - 1, c))
+    if r < GRID_N - 1:   nbs.append(rc_to_idx(r + 1, c))
+    if c > 0:            nbs.append(rc_to_idx(r, c - 1))
+    if c < GRID_N - 1:   nbs.append(rc_to_idx(r, c + 1))
+    return nbs
 
 
 # ============================================================
-# Semiotic Fabric Environment (Generative Process)
+# Numeric helpers
+# ============================================================
+def log_s(x):
+    return np.log(np.maximum(x, 1e-16))
+
+def softmax(x, temp=1.0):
+    e = np.exp(temp * (x - x.max()))
+    return e / e.sum()
+
+def entropy_H(p):
+    p = np.asarray(p, dtype=np.float64)
+    p = p / p.sum()
+    return -np.sum(p * log_s(p))
+
+def kl_div(q, p):
+    q = np.asarray(q, dtype=np.float64); q = q / q.sum()
+    p = np.asarray(p, dtype=np.float64); p = p / p.sum()
+    return np.sum(q * (log_s(q) - log_s(p)))
+
+
+# ============================================================
+# Environment
 # ============================================================
 class SemFabricEnv:
-    """5x5 semiotic fabric with heterogeneous domain context."""
+    """5×5 semiotic fabric with semantic states and domain assignments."""
 
     def __init__(self, heterogeneous=False, true_domain=GEOINT, seed=None):
-        self.rng = np.random.default_rng(seed)
-        self.sem = np.zeros(N_CELLS, dtype=int)
-        self.quality = np.zeros(N_CELLS)
-        self.heterogeneous = heterogeneous
+        self.rng = np.random.RandomState(seed)
+        self.sem = np.zeros(N_CELLS, dtype=int)        # semantic state per cell
+        self.quality = np.zeros(N_CELLS, dtype=float)   # enrichment quality
+        self.cell_domains = np.full(N_CELLS, true_domain, dtype=int)
 
         if heterogeneous:
-            self.cell_domains = np.zeros(N_CELLS, dtype=int)
-            for i in range(N_CELLS):
-                r, c = idx_to_rc(i)
+            for k in range(N_CELLS):
+                r, c = idx_to_rc(k)
                 if r + c < GRID_N - 1:
-                    self.cell_domains[i] = GEOINT
+                    self.cell_domains[k] = GEOINT
                 elif r + c > GRID_N - 1:
-                    self.cell_domains[i] = SIGINT
+                    self.cell_domains[k] = SIGINT
                 else:
-                    self.cell_domains[i] = self.rng.choice([GEOINT, SIGINT])
-        else:
-            self.cell_domains = np.full(N_CELLS, true_domain, dtype=int)
+                    self.cell_domains[k] = self.rng.choice([GEOINT, SIGINT])
 
     def observe(self, pos):
-        obs = [0, 0, 0, 0]
-        obs[0] = pos
-
-        s = self.sem[pos]
-        if s == UNPROCESSED:
-            obs[1] = OBS_SEM_NONE
-        elif s == PARTIAL:
-            obs[1] = self.rng.choice([OBS_SEM_HINT, OBS_SEM_MATCH], p=[0.7, 0.3])
+        """Generate noisy observations at *pos*."""
+        sem_state = self.sem[pos]
+        # Semantic obs
+        if sem_state == UNPROCESSED:
+            probs = [0.80, 0.12, 0.03, 0.05]
+        elif sem_state == PARTIAL:
+            probs = [0.10, 0.55, 0.25, 0.10]
         else:
-            obs[1] = OBS_SEM_MATCH
+            probs = [0.02, 0.08, 0.85, 0.05]
+        obs_sem = self.rng.choice(N_OBS_SEM, p=probs)
 
-        nb = get_neighbors(pos)
-        has_enriched_nb = any(self.sem[n] >= PARTIAL for n in nb.values())
-        if has_enriched_nb:
-            obs[2] = OBS_ASSOC_CONSISTENT if self.rng.random() < 0.8 else OBS_ASSOC_INCONSISTENT
+        # Association obs (based on neighbors)
+        nbs = neighbors(pos)
+        has_enriched = any(self.sem[n] >= PARTIAL for n in nbs)
+        if has_enriched:
+            obs_assoc = self.rng.choice(N_OBS_ASSOC, p=[0.10, 0.75, 0.15])
         else:
-            obs[2] = OBS_ASSOC_NONE
+            obs_assoc = self.rng.choice(N_OBS_ASSOC, p=[0.85, 0.10, 0.05])
 
-        local_dom = self.cell_domains[pos]
-        p_correct = 0.55
+        # Domain obs
+        true_dom = self.cell_domains[pos]
         r = self.rng.random()
-        if r < p_correct:
-            obs[3] = local_dom
-        elif r < p_correct + 0.25:
-            obs[3] = OBS_DOM_AMB
+        if r < 0.55:
+            obs_dom = true_dom
+        elif r < 0.80:
+            obs_dom = OBS_DOM_AMB
         else:
-            obs[3] = (local_dom + self.rng.integers(1, N_DOM)) % N_DOM
-        return obs
+            wrong = [d for d in range(N_DOM) if d != true_dom]
+            obs_dom = self.rng.choice(wrong)
+
+        return [obs_sem, obs_assoc, obs_dom]
 
     def step(self, pos, move, enrich, wave_dom_belief=None):
-        """
-        Enrichment success depends on Wave's domain belief accuracy.
-        p_success = 0.15 + 0.80 * q(correct_domain)
-        """
+        """Execute movement + enrichment, return (new_pos, obs, did_enrich)."""
         new_pos = step_cell(pos, move)
         did_enrich = False
+
         if enrich == ENRICH_ACT and self.sem[new_pos] < ENRICHED:
-            cell_dom = self.cell_domains[new_pos]
+            true_dom = self.cell_domains[new_pos]
             if wave_dom_belief is not None:
-                accuracy = float(wave_dom_belief[cell_dom])
-                p_success = 0.15 + 0.80 * accuracy
+                accuracy = float(wave_dom_belief[true_dom])
             else:
-                accuracy = 0.5
-                p_success = 0.85
+                accuracy = 0.85
+            p_success = 0.15 + 0.80 * accuracy
             if self.rng.random() < p_success:
                 self.sem[new_pos] = min(self.sem[new_pos] + 1, ENRICHED)
                 self.quality[new_pos] = max(self.quality[new_pos], accuracy)
                 did_enrich = True
-        return new_pos, self.observe(new_pos), did_enrich
 
-    def grid(self):
-        return self.sem.copy().reshape(GRID_N, GRID_N)
+        obs = self.observe(new_pos)
+        return new_pos, obs, did_enrich
 
     def n_enriched(self):
-        return int(np.sum(self.sem >= ENRICHED))
+        return int(np.sum(self.sem == ENRICHED))
 
     def n_processed(self):
         return int(np.sum(self.sem >= PARTIAL))
 
+    def grid(self):
+        return self.sem.reshape(GRID_N, GRID_N).copy()
+
 
 # ============================================================
-# Active Inference Wave
+# Generative model builders
+# ============================================================
+def build_A_sem(expertise_dom=None, kappa=0.50):
+    """P(obs_semantic | semantic_state, domain).  Shape (4, 3, 3).
+    Depends primarily on semantic_state; domain has negligible effect."""
+    base = np.array([
+        [0.80, 0.10, 0.02],   # none
+        [0.12, 0.55, 0.08],   # hint
+        [0.03, 0.25, 0.85],   # match
+        [0.05, 0.10, 0.05],   # contradiction
+    ])  # shape (4, 3)
+    # Tile across domain dimension (domain-independent)
+    A = np.stack([base] * N_DOM, axis=-1)  # (4, 3, 3)
+    return A
+
+def build_A_assoc():
+    """P(obs_assoc | semantic_state, domain).  Shape (3, 3, 3).
+    Uses semantic_state as proxy for neighborhood enrichment."""
+    base = np.array([
+        [0.85, 0.30, 0.10],   # none
+        [0.10, 0.50, 0.75],   # consistent
+        [0.05, 0.20, 0.15],   # inconsistent
+    ])  # (3, 3)
+    A = np.stack([base] * N_DOM, axis=-1)  # (3, 3, 3)
+    return A
+
+def build_A_dom(expertise_dom=None, kappa=0.50):
+    """P(obs_domain | semantic_state, domain).  Shape (4, 3, 3).
+    Depends primarily on domain factor."""
+    base = np.zeros((N_OBS_DOM, N_DOM))
+    for d in range(N_DOM):
+        for o in range(N_DOM):
+            base[o, d] = kappa if o == d else (1.0 - kappa - 0.25) / (N_DOM - 1)
+        base[OBS_DOM_AMB, d] = 0.25
+    if expertise_dom is not None:
+        base[expertise_dom, expertise_dom] = 0.70
+        base[OBS_DOM_AMB, expertise_dom] = 0.10
+        # renormalise column
+        col = base[:, expertise_dom]
+        others = [i for i in range(N_OBS_DOM) if i != expertise_dom and i != OBS_DOM_AMB]
+        remainder = 1.0 - base[expertise_dom, expertise_dom] - base[OBS_DOM_AMB, expertise_dom]
+        for i in others:
+            base[i, expertise_dom] = remainder / len(others)
+    # Tile across semantic (semantic-independent)
+    A = np.stack([base] * N_SEM, axis=1)  # (4, 3, 3) — obs × sem × dom
+    return A
+
+def build_B_sem():
+    """P(sem' | sem, action).  Shape (3, 3, 2).
+    Action 0 = OBSERVE (identity), Action 1 = ENRICH (upgrade)."""
+    B_obs = np.eye(N_SEM)
+    B_enr = np.array([
+        [0.20, 0.00, 0.00],
+        [0.80, 0.20, 0.00],
+        [0.00, 0.80, 1.00],
+    ])
+    return np.stack([B_obs, B_enr], axis=-1)  # (3, 3, 2)
+
+def build_B_dom():
+    """P(dom' | dom, action).  Shape (3, 3, 1). Always identity (domain constant)."""
+    return np.expand_dims(np.eye(N_DOM), -1)  # (3, 3, 1)
+
+def build_C_sem():
+    return np.array([-0.3, 0.5, 0.0, -1.0])
+
+def build_C_assoc():
+    return np.array([-0.2, 0.5, -0.3])
+
+def build_C_dom(preference_dom=None):
+    C = np.array([0.0, 0.0, 0.0, -0.5])
+    if preference_dom is not None:
+        C[preference_dom] = 1.0
+    return C
+
+def build_D_sem():
+    D = np.array([0.7, 0.2, 0.1])
+    return D / D.sum()
+
+def build_D_dom(prior_dom=None):
+    if prior_dom is not None:
+        D = np.full(N_DOM, 0.1)
+        D[prior_dom] = 0.8
+    else:
+        D = np.ones(N_DOM) / N_DOM
+    return D / D.sum()
+
+
+# ============================================================
+# Wave (Active Inference Agent wrapping pymdp)
 # ============================================================
 class Wave:
-    """
-    Process Wave as discrete active inference agent with 2-step
-    policy evaluation (proper expected free energy).
+    """Process Wave agent using pymdp for local inference + learning,
+    with spatial EFE-based movement policy."""
 
-    Configurable generative model components:
-    - A_dom: expertise_dom increases observation precision for one domain
-    - C_dom: preference_dom creates pragmatic drive toward one domain
-    - D (domain_prior): initial domain belief
-    """
-
-    def __init__(self, domain_prior=None, epistemic=True, gamma=8.0, seed=None,
-                 expertise_dom=None, preference_dom=None):
-        self.rng = np.random.default_rng(seed)
+    def __init__(self, epistemic=True, gamma=8.0, seed=None,
+                 expertise_dom=None, preference_dom=None, prior_dom=None,
+                 learn=True, dirichlet_scale=1.0):
+        self.rng = np.random.RandomState(seed)
+        self.jax_key = jr.PRNGKey(seed if seed is not None else 0)
         self.epistemic = epistemic
         self.gamma = gamma
+        self.learn = learn
 
-        # Per-cell semantic belief
-        self.sem_belief = np.ones((N_CELLS, N_SEM)) / N_SEM
-        self.sem_belief[:, UNPROCESSED] = 0.7
-        self.sem_belief[:, PARTIAL] = 0.2
-        self.sem_belief[:, ENRICHED] = 0.1
+        # Build generative model arrays (numpy)
+        A_sem_np = build_A_sem(expertise_dom)
+        A_assoc_np = build_A_assoc()
+        A_dom_np = build_A_dom(expertise_dom)
+        B_sem_np = build_B_sem()
+        B_dom_np = build_B_dom()
+        C_sem_np = build_C_sem()
+        C_assoc_np = build_C_assoc()
+        C_dom_np = build_C_dom(preference_dom)
+        D_sem_np = build_D_sem()
+        D_dom_np = build_D_dom(prior_dom)
 
-        # Per-cell domain belief (D) — enables position-dependent predictions
-        if domain_prior is not None:
-            dp = np.array(domain_prior, dtype=float)
-            dp /= dp.sum()
-        else:
-            dp = np.ones(N_DOM) / N_DOM
-        self.cell_dom_belief = np.tile(dp, (N_CELLS, 1))
+        # Store numpy copies for spatial EFE evaluation
+        self.A_sem_np = A_sem_np
+        self.A_assoc_np = A_assoc_np
+        self.A_dom_np = A_dom_np
+        self.C_sem_np = C_sem_np
+        self.C_assoc_np = C_assoc_np
+        self.C_dom_np = C_dom_np
+        self.D_sem_np = D_sem_np
+        self.D_dom_np = D_dom_np
 
-        # --- Likelihood matrices (A) ---
+        # Convert to JAX
+        A = [jnp.array(A_sem_np), jnp.array(A_assoc_np), jnp.array(A_dom_np)]
+        B = [jnp.array(B_sem_np), jnp.array(B_dom_np)]
+        C = [jnp.array(C_sem_np), jnp.array(C_assoc_np), jnp.array(C_dom_np)]
+        D = [jnp.array(D_sem_np), jnp.array(D_dom_np)]
 
-        # P(obs_sem | sem_state), shape (N_SEM, N_OBS_SEM)
-        self.A_sem = np.array([
-            [0.80, 0.12, 0.03, 0.05],   # UNPROCESSED
-            [0.10, 0.55, 0.25, 0.10],   # PARTIAL
-            [0.02, 0.08, 0.85, 0.05],   # ENRICHED
-        ])
+        # Dirichlet priors for learning
+        pA = [a * dirichlet_scale for a in A] if learn else None
+        pB = [b * dirichlet_scale for b in B] if learn else None
 
-        # P(obs_assoc | neighbor_state), shape (2, N_OBS_ASSOC)
-        self.A_assoc = np.array([
-            [0.85, 0.10, 0.05],  # no enriched neighbor
-            [0.10, 0.75, 0.15],  # has enriched neighbor
-        ])
+        # Create pymdp Agent
+        self.agent = Agent(
+            A=A, B=B, C=C, D=D,
+            pA=pA, pB=pB,
+            num_controls=[2, 1],      # enrich(2) for semantic, none(1) for domain
+            control_fac_idx=[0],       # only semantic factor is controllable
+            policy_len=1,
+            use_utility=True,
+            use_states_info_gain=epistemic,
+            learn_A=learn,
+            learn_B=learn,
+            action_selection='stochastic',
+            gamma=gamma,
+            batch_size=1,
+        )
 
-        # P(obs_dom | domain), shape (N_OBS_DOM, N_DOM)
-        self.A_dom = np.array([
-            [0.50, 0.10, 0.10],  # obs=dom0
-            [0.10, 0.50, 0.10],  # obs=dom1
-            [0.10, 0.10, 0.50],  # obs=dom2
-            [0.30, 0.30, 0.30],  # obs=ambiguous
-        ])
+        # Per-cell belief stores
+        self.cell_beliefs_sem = np.tile(D_sem_np, (N_CELLS, 1))   # (25, 3)
+        self.cell_beliefs_dom = np.tile(D_dom_np, (N_CELLS, 1))   # (25, 3)
 
-        # Customize A_dom for domain expertise
-        if expertise_dom is not None:
-            self.A_dom[expertise_dom, expertise_dom] = 0.70
-            self.A_dom[OBS_DOM_AMB, expertise_dom] = 0.10
-            # Renormalize affected column
-            self.A_dom[:, expertise_dom] /= self.A_dom[:, expertise_dom].sum()
+        # Visit counts for exploration bonus
+        self.visit_counts = np.zeros(N_CELLS, dtype=int)
 
-        # --- Transition models (B) ---
-        self.B_sem_observe = np.eye(N_SEM)
-        self.B_sem_enrich = np.array([
-            # B[s', s] = P(s' | s, enrich)
-            # Rows indexed by (from_state): UNPROC, PARTIAL, ENRICHED
-            # Values: [P(stay), P(upgrade), P(skip_to_enriched)]
-            [0.20, 0.80, 0.00],  # from UNPROCESSED
-            [0.00, 0.20, 0.80],  # from PARTIAL
-            [0.00, 0.00, 1.00],  # from ENRICHED
-        ])
+        # Tracking
+        self.qs_history = []
+        self.obs_history = []
+        self.action_history = []
 
-        # --- Preferences (C, log-scale) ---
-        # Key design: match=0 so enriched cells don't trap the agent.
-        # hint>0 rewards discovering partially-enriched cells.
-        # none is mildly negative, contradiction is penalized.
-        self.C_sem = np.array([-0.3, 0.5, 0.0, -1.0])
-        self.C_assoc = np.array([-0.2, 0.5, -0.3])
+    def _get_empirical_prior(self, pos):
+        """Load per-cell beliefs as empirical prior for pymdp."""
+        sem = jnp.expand_dims(jnp.array(self.cell_beliefs_sem[pos]), 0)  # (1, 3)
+        dom = jnp.expand_dims(jnp.array(self.cell_beliefs_dom[pos]), 0)  # (1, 3)
+        return [sem, dom]
 
-        # Customize C_dom for domain preferences
-        if preference_dom is not None:
-            self.C_dom = np.zeros(N_OBS_DOM)
-            self.C_dom[preference_dom] = 1.0
-            self.C_dom[OBS_DOM_AMB] = -0.5
-        else:
-            self.C_dom = np.array([0.0, 0.0, 0.0, -0.5])  # neutral
+    def _store_posterior(self, pos, qs):
+        """Store updated posterior beliefs back to per-cell store."""
+        self.cell_beliefs_sem[pos] = np.array(qs[0][0, 0, :])  # (3,)
+        self.cell_beliefs_dom[pos] = np.array(qs[1][0, 0, :])  # (3,)
 
-        # Precompute constant entropies for EFE (performance)
-        self._H_A_sem = np.array([entropy_H(self.A_sem[s, :]) for s in range(N_SEM)])
-        self._H_A_dom = np.array([entropy_H(self.A_dom[:, d]) for d in range(N_DOM)])
-        self._H_A_assoc = np.array([entropy_H(self.A_assoc[i]) for i in range(2)])
+    def _obs_to_jax(self, obs):
+        """Convert integer observations to JAX format for pymdp."""
+        return [jnp.array([[o]]) for o in obs]  # list of (1, 1) arrays
 
-    def update_beliefs(self, pos, obs):
-        """Bayesian belief update given observation at position pos."""
-        # Semantic belief for current cell
-        obs_sem = obs[1]
-        likelihood_sem = self.A_sem[:, obs_sem]
-        posterior_sem = likelihood_sem * self.sem_belief[pos]
-        s = posterior_sem.sum()
-        self.sem_belief[pos] = posterior_sem / s if s > 1e-16 else np.ones(N_SEM) / N_SEM
+    def infer_and_act(self, pos, obs):
+        """Full perception–action cycle at current position.
+        Returns: (enrich_action, qs, q_pi, efe)"""
+        # Perception: state inference using per-cell beliefs as prior
+        emp_prior = self._get_empirical_prior(pos)
+        jax_obs = self._obs_to_jax(obs)
+        qs = self.agent.infer_states(jax_obs, emp_prior)
 
-        # Neighbor awareness from association signal
-        obs_assoc = obs[2]
-        nb = get_neighbors(pos)
-        if obs_assoc == OBS_ASSOC_CONSISTENT:
-            for nidx in nb.values():
-                self.sem_belief[nidx, PARTIAL:] *= 1.3
-                self.sem_belief[nidx] /= self.sem_belief[nidx].sum()
-        elif obs_assoc == OBS_ASSOC_INCONSISTENT:
-            for nidx in nb.values():
-                self.sem_belief[nidx, UNPROCESSED] *= 1.2
-                self.sem_belief[nidx] /= self.sem_belief[nidx].sum()
+        # Store updated beliefs
+        self._store_posterior(pos, qs)
 
-        # Per-cell domain belief update (moderate tempering for local learning)
-        obs_dom = obs[3]
-        likelihood_dom = self.A_dom[obs_dom, :]
-        tempered_likelihood = 0.3 * likelihood_dom + 0.7 * np.ones(N_DOM) / N_DOM
-        posterior_dom = tempered_likelihood * self.cell_dom_belief[pos]
-        s = posterior_dom.sum()
-        self.cell_dom_belief[pos] = posterior_dom / s if s > 1e-16 else np.ones(N_DOM) / N_DOM
+        # Policy inference (observe vs enrich)
+        q_pi, efe = self.agent.infer_policies(qs)
 
-        # Gently propagate domain knowledge to neighbors (spatial smoothing)
-        if obs_dom < N_DOM:  # actual domain cue (not ambiguous)
-            for nidx in nb.values():
-                nb_tempered = 0.1 * likelihood_dom + 0.9 * np.ones(N_DOM) / N_DOM
-                nb_post = nb_tempered * self.cell_dom_belief[nidx]
-                s = nb_post.sum()
-                if s > 1e-16:
-                    self.cell_dom_belief[nidx] = nb_post / s
+        # Sample action
+        self.jax_key, subkey = jr.split(self.jax_key)
+        action = self.agent.sample_action(q_pi, rng_key=jr.split(subkey, 1))
+        enrich_action = int(action[0, 0])  # first factor = enrichment
 
-    def _compute_neighbor_enrichment_prob(self, cell_idx):
-        """P(at least one neighbor is enriched/partial)."""
-        nb = get_neighbors(cell_idx)
-        if not nb:
-            return 0.0
-        p_all_unproc = 1.0
-        for nidx in nb.values():
-            p_all_unproc *= self.sem_belief[nidx, UNPROCESSED]
-        return 1.0 - p_all_unproc
+        # Track for learning
+        self.qs_history.append(qs)
+        self.obs_history.append(jax_obs)
+        self.action_history.append(action)
 
-    def _step_value(self, pos, pred_sem):
-        """
-        Compute value (negative EFE) for one step at position with
-        predicted semantic state.
+        return enrich_action, qs, q_pi, efe
 
-        G = -pragmatic - epistemic  (minimize G)
-        value = pragmatic + epistemic  (maximize value)
-        """
-        # --- Expected observations per modality ---
-        qo_sem = self.A_sem.T @ pred_sem
-        qo_sem = np.maximum(qo_sem, 1e-16)
-        qo_sem /= qo_sem.sum()
+    def select_movement(self, current_pos):
+        """Spatial EFE: evaluate candidate positions via softmax selection.
+        Returns: (move_direction, target_pos)"""
+        self.visit_counts[current_pos] += 1
 
-        p_enr_nb = self._compute_neighbor_enrichment_prob(pos)
-        qo_assoc = (1 - p_enr_nb) * self.A_assoc[0] + p_enr_nb * self.A_assoc[1]
-        qo_assoc /= qo_assoc.sum()
+        candidates = [(STAY, current_pos)]
+        for move in [UP, DOWN, LEFT, RIGHT]:
+            target = step_cell(current_pos, move)
+            if target != current_pos:
+                candidates.append((move, target))
 
-        dom_belief = self.cell_dom_belief[pos]
-        qo_dom = self.A_dom @ dom_belief
-        qo_dom = np.maximum(qo_dom, 1e-16)
-        qo_dom /= qo_dom.sum()
+        values = np.array([self._cell_efe(t) for _, t in candidates])
+        probs = softmax(values, temp=4.0)
+        idx = self.rng.choice(len(candidates), p=probs)
+        return candidates[idx]
 
-        # --- Pragmatic value: E_q(o)[C(o)] ---
-        pragmatic = (np.dot(qo_sem, self.C_sem) +
-                     np.dot(qo_assoc, self.C_assoc) +
-                     np.dot(qo_dom, self.C_dom))
+    def _cell_efe(self, cell_idx):
+        """Compute negative EFE (value) for visiting a cell.
+        Higher = more valuable to visit."""
+        q_sem = self.cell_beliefs_sem[cell_idx]
+        q_dom = self.cell_beliefs_dom[cell_idx]
 
-        # --- Epistemic value: mutual information I(o;s) ---
-        epistemic = 0.0
+        pragmatic = 0.0
+        epistemic_val = 0.0
+
+        # Semantic modality
+        A_sem_marginal = np.einsum('ijk,k->ij', self.A_sem_np, q_dom)  # (4, 3)
+        qo_sem = A_sem_marginal @ q_sem
+        qo_sem = qo_sem / (qo_sem.sum() + 1e-16)
+        pragmatic += np.dot(qo_sem, self.C_sem_np)
         if self.epistemic:
-            # Semantic IG (using precomputed A_sem row entropies)
-            epistemic += entropy_H(qo_sem) - np.dot(pred_sem, self._H_A_sem)
+            H_qo = entropy_H(qo_sem)
+            H_cols = np.array([entropy_H(A_sem_marginal[:, s]) for s in range(N_SEM)])
+            epistemic_val += H_qo - np.dot(q_sem, H_cols)
 
-            # Domain IG (using precomputed A_dom column entropies)
-            epistemic += entropy_H(qo_dom) - np.dot(dom_belief, self._H_A_dom)
+        # Domain modality
+        A_dom_marginal = np.einsum('ijk,j->ik', self.A_dom_np, q_sem)
+        qo_dom = A_dom_marginal @ q_dom
+        qo_dom = qo_dom / (qo_dom.sum() + 1e-16)
+        pragmatic += np.dot(qo_dom, self.C_dom_np)
+        if self.epistemic:
+            H_qo_d = entropy_H(qo_dom)
+            H_cols_d = np.array([entropy_H(A_dom_marginal[:, d]) for d in range(N_DOM)])
+            epistemic_val += H_qo_d - np.dot(q_dom, H_cols_d)
 
-            # Association IG (using precomputed A_assoc entropies)
-            H_qo = entropy_H(qo_assoc)
-            E_H = (1 - p_enr_nb) * self._H_A_assoc[0] + p_enr_nb * self._H_A_assoc[1]
-            epistemic += H_qo - E_H
+        # Association modality
+        A_assoc_marginal = np.einsum('ijk,k->ij', self.A_assoc_np, q_dom)
+        qo_assoc = A_assoc_marginal @ q_sem
+        qo_assoc = qo_assoc / (qo_assoc.sum() + 1e-16)
+        pragmatic += np.dot(qo_assoc, self.C_assoc_np)
+        if self.epistemic:
+            H_qo_a = entropy_H(qo_assoc)
+            H_cols_a = np.array([entropy_H(A_assoc_marginal[:, s]) for s in range(N_SEM)])
+            epistemic_val += H_qo_a - np.dot(q_sem, H_cols_a)
 
-        return pragmatic + epistemic
+        # Novelty bonus: prefer less-visited cells (1/sqrt(n+1))
+        novelty = 1.0 / np.sqrt(self.visit_counts[cell_idx] + 1)
 
-    def evaluate_policies(self, pos):
-        """
-        Evaluate all 2-step policies pi = (a1, a2).
+        # Unprocessed cells are more valuable to explore
+        unprocessed_bonus = q_sem[UNPROCESSED] * 0.3
 
-        G(pi) = G1 + G2 (expected free energy summed over both steps)
-        Returns value = -G for each policy (higher = better).
-        """
-        # Cache step 1 results for each first action (10 unique)
-        step1 = {}
-        for a1 in range(N_ACTIONS):
-            move1, enrich1 = COMBINED[a1]
-            pos1 = step_cell(pos, move1)
-            if enrich1 == ENRICH_ACT:
-                pred_sem1 = self.B_sem_enrich.T @ self.sem_belief[pos1]
-            else:
-                pred_sem1 = self.sem_belief[pos1].copy()
-            v1 = self._step_value(pos1, pred_sem1)
-            step1[a1] = (pos1, pred_sem1, v1)
+        value = pragmatic + epistemic_val + novelty + unprocessed_bonus
+        return value
 
-        # Evaluate all 100 two-step policies
-        policy_values = np.zeros(N_ACTIONS * N_ACTIONS)
-        for a1 in range(N_ACTIONS):
-            pos1, pred_sem1, v1 = step1[a1]
-            for a2 in range(N_ACTIONS):
-                move2, enrich2 = COMBINED[a2]
-                pos2 = step_cell(pos1, move2)
+    def update_neighbor_beliefs(self, pos, obs_assoc):
+        """Gentle belief propagation from observation to neighbors."""
+        nbs = neighbors(pos)
+        if obs_assoc == OBS_ASSOC_CONSISTENT:
+            for n in nbs:
+                self.cell_beliefs_sem[n, PARTIAL:] *= 1.2
+                self.cell_beliefs_sem[n] /= self.cell_beliefs_sem[n].sum()
+        elif obs_assoc == OBS_ASSOC_INCONSISTENT:
+            for n in nbs:
+                self.cell_beliefs_sem[n, UNPROCESSED] *= 1.15
+                self.cell_beliefs_sem[n] /= self.cell_beliefs_sem[n].sum()
 
-                # Semantic belief at pos2 accounting for step 1 effects
-                if pos2 == pos1:
-                    pre_sem2 = pred_sem1
-                else:
-                    pre_sem2 = self.sem_belief[pos2]
-
-                if enrich2 == ENRICH_ACT:
-                    pred_sem2 = self.B_sem_enrich.T @ pre_sem2
-                else:
-                    pred_sem2 = pre_sem2
-
-                v2 = self._step_value(pos2, pred_sem2)
-                policy_values[a1 * N_ACTIONS + a2] = v1 + v2
-
-        return policy_values
-
-    def select_action(self, pos):
-        """Select action by marginalizing over second action of 2-step policies."""
-        policy_values = self.evaluate_policies(pos)
-        q_pi = softmax(policy_values, self.gamma)
-
-        # Marginalize: P(a1) = sum_{a2} P(pi = (a1, a2))
-        action_probs = np.zeros(N_ACTIONS)
-        for a1 in range(N_ACTIONS):
-            action_probs[a1] = q_pi[a1 * N_ACTIONS:(a1 + 1) * N_ACTIONS].sum()
-
-        action_idx = self.rng.choice(N_ACTIONS, p=action_probs)
-        move, enrich = COMBINED[action_idx]
-        return move, enrich, policy_values, action_probs
+    def propagate_domain_belief(self, pos, obs_dom):
+        """Gentle domain belief propagation to neighbors."""
+        if obs_dom < N_DOM:  # actual cue, not ambiguous
+            nbs = neighbors(pos)
+            likelihood = np.zeros(N_DOM)
+            likelihood[obs_dom] = 0.55
+            others = (1.0 - 0.55) / (N_DOM - 1)
+            for d in range(N_DOM):
+                if d != obs_dom:
+                    likelihood[d] = others
+            for n in nbs:
+                tempered = 0.1 * likelihood + 0.9 * np.ones(N_DOM) / N_DOM
+                posterior = tempered * self.cell_beliefs_dom[n]
+                self.cell_beliefs_dom[n] = posterior / posterior.sum()
 
     def record_enrichment(self, pos, success):
-        """Update beliefs after enrichment attempt."""
+        """Update beliefs after an enrichment attempt."""
         if success:
-            cur = self.sem_belief[pos].copy()
-            cur[UNPROCESSED] *= 0.1
-            cur[PARTIAL] *= 0.5
-            cur[ENRICHED] *= 2.0
-            self.sem_belief[pos] = cur / cur.sum()
+            boost = np.array([0.1, 0.5, 2.0])
+            self.cell_beliefs_sem[pos] *= boost
+            self.cell_beliefs_sem[pos] /= self.cell_beliefs_sem[pos].sum()
+
+    def do_learning_update(self):
+        """Run parameter learning on accumulated experience."""
+        if not self.learn or len(self.qs_history) < 2:
+            return
+
+        T = len(self.qs_history)
+        n_factors = 2
+
+        # Build beliefs sequence: list of (1, T, Ns_f)
+        beliefs = []
+        for f in range(n_factors):
+            seq = jnp.concatenate(
+                [self.qs_history[t][f][:, 0, :] for t in range(T)],
+                axis=0
+            ).reshape(1, T, -1)
+            beliefs.append(seq)
+
+        # Build outcomes: list of (1, T, 1)
+        n_modalities = 3
+        outcomes = []
+        for m in range(n_modalities):
+            seq = jnp.concatenate(
+                [self.obs_history[t][m] for t in range(T)],
+                axis=1
+            )  # (1, T)
+            outcomes.append(seq)
+
+        # Build actions: (1, T, n_action_dims)
+        actions = jnp.concatenate(
+            [self.action_history[t] for t in range(T)],
+            axis=0
+        ).reshape(1, T, -1)
+
+        # Update
+        self.agent = self.agent.infer_parameters(beliefs, outcomes, actions)
+
+    def reset_history(self):
+        """Clear history after learning update."""
+        self.qs_history = []
+        self.obs_history = []
+        self.action_history = []
 
 
 # ============================================================
-# Wave Factory
-# ============================================================
-def make_wave(expertise_dom=None, preference_dom=None, prior_dom=None,
-              epistemic=True, gamma=8.0, seed=None):
-    """
-    Create a Wave with specific generative model configuration.
-
-    Parameters
-    ----------
-    expertise_dom : int or None
-        Domain for which A_dom has higher observation precision.
-    preference_dom : int or None
-        Domain whose observations are preferred (C_dom).
-    prior_dom : int or None
-        Domain with strongest prior belief (D_dom).
-    """
-    if prior_dom is not None:
-        dp = np.ones(N_DOM) * 0.1
-        dp[prior_dom] = 0.8
-        dp /= dp.sum()
-    else:
-        dp = None
-    return Wave(domain_prior=dp, expertise_dom=expertise_dom,
-                preference_dom=preference_dom, epistemic=epistemic,
-                gamma=gamma, seed=seed)
-
-
-# ============================================================
-# Free Energy Computation (objective — no agent beliefs)
+# Free energy metrics (objective, fabric-level)
 # ============================================================
 def sign_free_energy(sem_state, quality=0.0):
-    """
-    F_sign based on objective fabric state.
-
-    sem_state: 0=UNPROCESSED, 1=PARTIAL, 2=ENRICHED
-    quality: accuracy of domain belief at enrichment time, in [0, 1]
-    """
-    F_max = np.log(N_DOM)
+    """VFE of a single Sign (cell) — based on objective enrichment state."""
+    F_max = np.log(N_SEM)
     if sem_state == UNPROCESSED:
         return F_max
-    effective = (sem_state / 2.0) * quality
+    effective = (sem_state / 2.0) * max(quality, 0.01)
     return (1.0 - effective) * F_max
 
-
 def regional_free_energy(env, r0, c0, size=2):
-    """Mean F_sign over a size x size region starting at (r0, c0)."""
-    g = env.grid()
-    F, n = 0.0, 0
+    """Mean VFE over a size×size region."""
+    vals = []
     for dr in range(size):
         for dc in range(size):
             r, c = r0 + dr, c0 + dc
-            if 0 <= r < GRID_N and 0 <= c < GRID_N:
+            if r < GRID_N and c < GRID_N:
                 idx = rc_to_idx(r, c)
-                F += sign_free_energy(g[r, c], env.quality[idx])
-                n += 1
-    return F / max(n, 1)
-
+                vals.append(sign_free_energy(env.sem[idx], env.quality[idx]))
+    return np.mean(vals) if vals else 0.0
 
 def fabric_free_energy(env):
-    """F_material = (1/N) sum_i F_sign(i)"""
-    g = env.grid()
-    return np.mean([sign_free_energy(g[idx_to_rc(i)], env.quality[i])
-                     for i in range(N_CELLS)])
-
-
-# ============================================================
-# Experiment 1: Single Wave Epistemic Foraging
-# ============================================================
-def run_experiment_1(T=100, seed=42):
-    """Compare epistemic vs pragmatic-only Wave on homogeneous grid."""
-    results = {}
-    for label, epist in [('epistemic', True), ('pragmatic', False)]:
-        print(f"  [{label}]", end="", flush=True)
-        env = SemFabricEnv(true_domain=GEOINT, seed=seed)
-        wave = Wave(epistemic=epist, gamma=8.0, seed=seed+1)
-
-        pos = rc_to_idx(GRID_N // 2, GRID_N // 2)
-        obs = env.observe(pos)
-
-        hist = {
-            'positions': [pos], 'fabric_F': [], 'domain_entropy': [],
-            'enrichment_count': [0], 'fabric_states': [env.grid()],
-        }
-
-        for t in range(T):
-            wave.update_beliefs(pos, obs)
-            move, enrich, _, _ = wave.select_action(pos)
-            target = step_cell(pos, move)
-            pos, obs, did_enrich = env.step(pos, move, enrich, wave.cell_dom_belief[target])
-            wave.record_enrichment(pos, did_enrich)
-
-            F = fabric_free_energy(env)
-            hist['positions'].append(pos)
-            hist['fabric_F'].append(F)
-            # Mean domain entropy across cells (how uncertain the Wave is about domains)
-            hist['domain_entropy'].append(
-                np.mean([entropy_H(wave.cell_dom_belief[i]) for i in range(N_CELLS)]))
-            hist['enrichment_count'].append(env.n_enriched())
-            hist['fabric_states'].append(env.grid())
-
-            if (t+1) % 25 == 0:
-                print(f" t={t+1}:F={F:.2f},E={env.n_enriched()}", end="", flush=True)
-
-        print()
-        results[label] = hist
-    return results
-
-
-# ============================================================
-# Experiment 2: Multi-Wave Cooperation — Isolating A, C, D
-# ============================================================
-def run_experiment_2(T=100, seed=42):
-    """
-    Five conditions isolating each generative model component's contribution.
-
-    All use heterogeneous domain grid (GEOINT upper-left, SIGINT lower-right).
-    Two Waves start at opposite corners.
-
-    Conditions:
-    1. shared:      identical (standard A, neutral C, uniform D)
-    2. diff_A:      only A matrices differ (domain expertise)
-    3. diff_C:      only C vectors differ (domain preferences)
-    4. diff_D:      only D priors differ (domain prior beliefs)
-    5. adversarial: Wave B has fully misspecified model (OSINT A + C + D)
-    """
-    conditions = {
-        'shared': {
-            'a': {'expertise_dom': None, 'preference_dom': None, 'prior_dom': None},
-            'b': {'expertise_dom': None, 'preference_dom': None, 'prior_dom': None},
-        },
-        'diff_A': {
-            'a': {'expertise_dom': GEOINT, 'preference_dom': None, 'prior_dom': None},
-            'b': {'expertise_dom': SIGINT, 'preference_dom': None, 'prior_dom': None},
-        },
-        'diff_C': {
-            'a': {'expertise_dom': None, 'preference_dom': GEOINT, 'prior_dom': None},
-            'b': {'expertise_dom': None, 'preference_dom': SIGINT, 'prior_dom': None},
-        },
-        'diff_D': {
-            'a': {'expertise_dom': None, 'preference_dom': None, 'prior_dom': GEOINT},
-            'b': {'expertise_dom': None, 'preference_dom': None, 'prior_dom': SIGINT},
-        },
-        'adversarial': {
-            'a': {'expertise_dom': None, 'preference_dom': None, 'prior_dom': None},
-            'b': {'expertise_dom': OSINT, 'preference_dom': OSINT, 'prior_dom': OSINT},
-        },
-    }
-
-    results = {}
-    for cond_name, wave_configs in conditions.items():
-        print(f"  [{cond_name}]", end="", flush=True)
-        env = SemFabricEnv(heterogeneous=True, seed=seed)
-
-        wa = make_wave(**wave_configs['a'], epistemic=True, gamma=8.0, seed=seed+10)
-        wb = make_wave(**wave_configs['b'], epistemic=True, gamma=8.0, seed=seed+20)
-
-        # Opposite starting corners
-        pos_a = rc_to_idx(0, 0)                    # GEOINT territory
-        pos_b = rc_to_idx(GRID_N-1, GRID_N-1)      # SIGINT territory
-        obs_a, obs_b = env.observe(pos_a), env.observe(pos_b)
-
-        hist = {
-            'fabric_F': [], 'enrichment_count': [0],
-            'fabric_states': [env.grid()],
-            'positions_a': [pos_a], 'positions_b': [pos_b],
-            'coverage': [],
-        }
-
-        for t in range(T):
-            # Wave A
-            wa.update_beliefs(pos_a, obs_a)
-            mv_a, en_a, _, _ = wa.select_action(pos_a)
-            tgt_a = step_cell(pos_a, mv_a)
-            pos_a, obs_a, did_a = env.step(pos_a, mv_a, en_a, wa.cell_dom_belief[tgt_a])
-            wa.record_enrichment(pos_a, did_a)
-
-            # Wave B (sees changes from A through shared environment)
-            wb.update_beliefs(pos_b, obs_b)
-            mv_b, en_b, _, _ = wb.select_action(pos_b)
-            tgt_b = step_cell(pos_b, mv_b)
-            pos_b, obs_b, did_b = env.step(pos_b, mv_b, en_b, wb.cell_dom_belief[tgt_b])
-            wb.record_enrichment(pos_b, did_b)
-
-            # Cross-Wave belief propagation through fabric
-            if did_a:
-                for nidx in get_neighbors(pos_a).values():
-                    wb.sem_belief[nidx, PARTIAL:] *= 1.1
-                    wb.sem_belief[nidx] /= wb.sem_belief[nidx].sum()
-            if did_b:
-                for nidx in get_neighbors(pos_b).values():
-                    wa.sem_belief[nidx, PARTIAL:] *= 1.1
-                    wa.sem_belief[nidx] /= wa.sem_belief[nidx].sum()
-
-            F = fabric_free_energy(env)
-            hist['fabric_F'].append(F)
-            hist['enrichment_count'].append(env.n_enriched())
-            hist['fabric_states'].append(env.grid())
-            hist['positions_a'].append(pos_a)
-            hist['positions_b'].append(pos_b)
-            hist['coverage'].append(env.n_processed() / N_CELLS)
-
-            if (t+1) % 25 == 0:
-                print(f" t={t+1}:F={F:.2f},E={env.n_enriched()}", end="", flush=True)
-
-        print()
-        hist['env'] = env
-        results[cond_name] = hist
-    return results
-
-
-# ============================================================
-# Experiment 3: Nested Free Energy
-# ============================================================
-def run_experiment_3(T=100, seed=42):
-    """Track F at Sign, regional, and fabric level."""
-    print("  [nested]", end="", flush=True)
-    env = SemFabricEnv(true_domain=GEOINT, seed=seed)
-    wave = Wave(domain_prior=[0.5, 0.25, 0.25], epistemic=True, gamma=8.0, seed=seed+1)
-
-    pos = rc_to_idx(GRID_N // 2, GRID_N // 2)
-    obs = env.observe(pos)
-
-    tracked = [rc_to_idx(0,0), rc_to_idx(1,2), rc_to_idx(2,4),
-               rc_to_idx(3,1), rc_to_idx(4,3)]
-    regions = [(0,0), (0,2), (2,0), (2,2)]
-
-    hist = {
-        'sign_F': {s: [] for s in tracked},
-        'regional_F': {r: [] for r in regions},
-        'fabric_F': [], 'enrichment_count': [0],
-    }
-
-    for t in range(T):
-        wave.update_beliefs(pos, obs)
-        mv, en, _, _ = wave.select_action(pos)
-        tgt = step_cell(pos, mv)
-        pos, obs, did = env.step(pos, mv, en, wave.cell_dom_belief[tgt])
-        wave.record_enrichment(pos, did)
-
-        g = env.grid()
-        for s in tracked:
-            r, c = idx_to_rc(s)
-            hist['sign_F'][s].append(sign_free_energy(g[r,c], env.quality[s]))
-        for (r0, c0) in regions:
-            hist['regional_F'][(r0,c0)].append(regional_free_energy(env, r0, c0))
-        F = fabric_free_energy(env)
-        hist['fabric_F'].append(F)
-        hist['enrichment_count'].append(env.n_enriched())
-
-        if (t+1) % 25 == 0:
-            print(f" t={t+1}:F={F:.2f},E={env.n_enriched()}", end="", flush=True)
-
-    print()
-    hist['tracked'] = tracked
-    hist['regions'] = regions
-    return hist
-
-
-if __name__ == '__main__':
-    print("=== Semiotic Fabric Active Inference Simulation ===\n")
-
-    print("Experiment 1: Single Wave Epistemic Foraging")
-    r1 = run_experiment_1(T=100, seed=42)
-    print(f"  Epistemic: F={r1['epistemic']['fabric_F'][-1]:.3f}, "
-          f"enriched={r1['epistemic']['enrichment_count'][-1]}")
-    print(f"  Pragmatic: F={r1['pragmatic']['fabric_F'][-1]:.3f}, "
-          f"enriched={r1['pragmatic']['enrichment_count'][-1]}\n")
-
-    print("Experiment 2: Multi-Wave Cooperation")
-    r2 = run_experiment_2(T=100, seed=42)
-    for c in ['shared', 'diff_A', 'diff_C', 'diff_D', 'adversarial']:
-        print(f"  {c}: F={r2[c]['fabric_F'][-1]:.3f}, "
-              f"enriched={r2[c]['enrichment_count'][-1]}")
-    print()
-
-    print("Experiment 3: Nested Free Energy")
-    r3 = run_experiment_3(T=100, seed=42)
-    print(f"  Final fabric F: {r3['fabric_F'][-1]:.3f}")
-    print("\nDone.")
+    """Fabric-level VFE = mean sign-level VFE across all cells."""
+    return np.mean([
+        sign_free_energy(env.sem[k], env.quality[k]) for k in range(N_CELLS)
+    ])

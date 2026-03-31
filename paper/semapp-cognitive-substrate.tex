@@ -70,17 +70,12 @@ in Ultra-Large-Scale Data Architecture}
 }
 
 \author{
-Mahault Albarracin$^{1,2,3}$ \and
+Mahault Albarracin$^{1}$ \and
 S. Yoakum-Stover$^{4}$ \and
-M. A. Eick$^{4}$ \and
-Maxwell J. D. Ramstead$^{2,5}$ \and
-Karl J. Friston$^{2,5}$
+M. A. Eick$^{4}$ 
 \\[6pt]
 \small $^{1}$D\'{e}partement d'informatique, Universit\'{e} du Qu\'{e}bec \`{a} Montr\'{e}al, Canada \\
-\small $^{2}$VERSES Research Lab, Los Angeles, CA, USA \\
-\small $^{3}$Spatial Web Foundation, Los Angeles, CA, USA \\
 \small $^{4}$Mission Focus, McLean, VA, USA \\
-\small $^{5}$Wellcome Centre for Human Neuroimaging, University College London, UK
 }
 
 \date{March 2026}
@@ -93,21 +88,21 @@ Karl J. Friston$^{2,5}$
 % ABSTRACT
 % ============================================================
 \begin{abstract}
-We argue that the SemApp semiotic data fabric --- an operational, petabyte-scale data architecture deployed within the U.S.\ Intelligence Community --- constitutes a cognitive substrate in the formal sense defined by the Free Energy Principle.
+We argue that the SemApp semiotic data fabric, an operational, petabyte-scale data architecture deployed within the U.S.\ Intelligence Community, constitutes a cognitive substrate in the formal sense defined by the Free Energy Principle.
 We establish a structural isomorphism between C.~S.~Peirce's triadic semiotics and variational inference, showing that SemApp's Sign Representation Framework implements semiosis as free energy minimization.
-We prove that SemApp's three-layer data architecture (unstructured data, structured Signs, domain models) instantiates nested Markov blankets, with each layer satisfying the conditional independence requirements of the blanket partition.
+We show that SemApp's three-layer data architecture (unstructured data, structured Signs, domain models) induces nested Markov blankets, with each layer satisfying the conditional independence requirements of the blanket partition under an explicit graphical model of the architecture.
 We formalize Process Waves as active inference agents whose expected free energy decomposes into deontic, epistemic, and pragmatic components mapped to concrete SemApp operations.
-We introduce the material free energy $\mathcal{F}_{\text{material}}$ of the fabric as a whole, showing that cumulative Wave processing monotonically decreases this quantity under consistent domain models.
-A computational demonstration using \texttt{pymdp} validates the formal mapping through three experiments: single-Wave epistemic foraging on a semiotic grid, multi-Wave cooperation dynamics, and multi-scale free energy minimization across nested blanket levels.
-These results establish that a semiotic data fabric organized into nested Markov blankets, with decentralized active inference agents operating over meaningful Signs, satisfies the formal criteria for cognition under the Free Energy Principle --- providing both explanatory power for why SemApp works at scale and predictive power for next-generation data architecture design.
+We derive the fabric-level variational free energy $\mathcal{F}_{\text{fabric}}$ from the fabric's generative model under a mean-field factorization, and argue that cumulative Wave processing tends to decrease this quantity under consistent domain models, a claim validated empirically by simulation.
+A computational demonstration using discrete active inference following the \texttt{pymdp} generative model specification \citep{heins2022pymdp} validates the formal mapping through four experiments of increasing scope: (1)~Artifact Standard Detection, where a single Wave infers file formats from noisy cues, outperforming rule-based and maximum-likelihood baselines on ambiguous artifacts; (2)~ambiguity resolution, where progressive context accumulation enables a Wave to resolve polysemous Signs; (3)~multi-Wave entity resolution, where domain-specialized Waves cooperating through belief propagation via stigmergic links outperform isolated, generalist, and homogeneous configurations; and (4)~nested free energy minimization across an integrated fabric of 100~elements, demonstrating monotonic decrease of fabric-level uncertainty with discrete jumps at the element level.
+These results establish that a semiotic data fabric organized into nested Markov blankets, with decentralized active inference agents operating over meaningful Signs, satisfies the formal criteria for cognition under the Free Energy Principle---providing both explanatory power for why SemApp works at scale and predictive power for next-generation data architecture design.
 
 \vspace{6pt}
 \noindent\textbf{Keywords:} Active inference, Free Energy Principle, Markov blankets, semiotics, data fabric, Peircean signs, distributed cognition, ultra-large-scale systems, process waves, variational inference
 \end{abstract}
 
-\newpage
-\tableofcontents
-\newpage
+% \newpage
+% \tableofcontents
+% \newpage
 
 % ============================================================
 % 1. INTRODUCTION
@@ -119,60 +114,50 @@ These results establish that a semiotic data fabric organized into nested Markov
 
 The national defense enterprise of the United States has a data problem. Despite spending billions annually on data collection, storage, processing, and management, the Intelligence Community (IC) and Department of Defense (DoD) struggle to capitalize on those investments \citep{sei2006uls, yoakumstover2025semapp}. The consequences to national security are serious: intelligence and military operations are impeded as basic command challenges go unmet.
 
-The root cause, as identified by the Software Engineering Institute's landmark study \citep{sei2006uls}, is that the defense data ecosystem constitutes an \emph{Ultra-Large-Scale} (ULS) system --- characterized by decentralization, inherently conflicting requirements, heterogeneous elements, normal failures, continuous evolution, and immense scale along many dimensions. ULS systems are to ordinary systems as cities are to buildings: qualitatively different in kind, not merely in degree.
+The root cause, as identified by the Software Engineering Institute's landmark study \citep{sei2006uls}, is that the defense data ecosystem constitutes an \emph{Ultra-Large-Scale} (ULS) system, characterized by decentralization, inherently conflicting requirements, heterogeneous elements, normal failures, continuous evolution, and immense scale along many dimensions. ULS systems are to ordinary systems as cities are to buildings: qualitatively different in kind, not merely in degree.
 
-Traditional approaches to data unification --- \emph{harmonization} (merging data models into a canonical form) and \emph{federation} (translating through adapters to a canonical model) --- both fail at ULS scale because they attempt to impose a single semantic perspective on inherently diverse data. There is no one right way to represent all knowledge that will suffice for every purpose. To impose one destroys the essential complexity that gives intelligence its richness \citep{yoakumstover2025semapp}.
+Traditional approaches to data unification, \emph{harmonization} (merging data models into a canonical form) and \emph{federation} (translating through adapters to a canonical model), both fail at ULS scale because they attempt to impose a single semantic perspective on inherently diverse data. There is no one right way to represent all knowledge that will suffice for every purpose. To impose one destroys the essential complexity that gives intelligence its richness \citep{yoakumstover2025semapp}.
 
-The conundrum is this: unifying data means having one interface to all data, which implies a single data model, entailing a single fixed perspective. But there is no one right way to represent all knowledge, and to impose one thwarts the ULS nature of the problem.
+The conundrum is that unifying data means having one interface to all data, which implies a single data model, entailing a single fixed perspective. But there is no one right way to represent all knowledge, and to impose one thwarts the ULS nature of the problem.
 
-This paper proposes that this conundrum dissolves when viewed through the lens of active inference and the Free Energy Principle (FEP). The data problem is not merely an engineering challenge --- it is a \emph{cognitive} challenge. At ULS scale, a data system must \emph{make sense} of its contents: discovering patterns, resolving ambiguities, maintaining coherent representations while accommodating diversity. These are precisely the functions that the FEP attributes to cognitive systems.
+This paper proposes that this conundrum dissolves when viewed through the lens of active inference and the Free Energy Principle (FEP). The data problem is a \emph{cognitive} challenge. At ULS scale, a data system must \emph{make sense} of its contents which means discovering patterns, resolving ambiguities, maintaining coherent representations while accommodating diversity. These are precisely the functions that the FEP attributes to cognitive systems.
 
-We argue that the SemApp data fabric, developed by Mission Focus and operational on classified IC networks processing nearly 70 petabytes of diverse data \citep{yoakumstover2025semapp}, resolves this conundrum because --- whether by design or convergent evolution --- it has the architecture of a cognitive system. Specifically, it implements decentralized active inference through nested Markov blankets over a semiotic substrate.
+We argue that the SemApp data fabric, developed by Mission Focus and operational on classified IC networks processing nearly 70 petabytes of diverse data \citep{yoakumstover2025semapp}, resolves this conundrum because, whether by design or convergent evolution, it has the architecture of a cognitive system. Specifically, it implements decentralized active inference through nested Markov blankets over a semiotic substrate.
 
 \subsection{Active Inference as the Physics of Intelligence}
 \label{sec:aif_intro}
 
-The Free Energy Principle (FEP) provides a first-principles account of why self-organizing systems persist and how they maintain their identity in a changing world \citep{friston2019particular}. At its core, the FEP states that any system that maintains a boundary between itself and its environment --- formally, a \emph{Markov blanket} --- must minimize an information-theoretic quantity called \emph{variational free energy}. This minimization is equivalent to performing approximate Bayesian inference: the system implicitly maintains a model of its environment and acts to confirm its predictions.
+The FEP is a first-principles account of why self-organizing systems persist and how they maintain their identity in a changing world \citep{friston2019particular, albarracin2025resilience}. At its core, the FEP states that any system that maintains a boundary between itself and its environment, formally, a \emph{Markov blanket}, must minimize an information-theoretic quantity called \emph{variational free energy}. This minimization is equivalent to performing approximate Bayesian inference. The system implicitly maintains a model of its environment and acts to confirm its predictions.
 
-Active inference extends this principle to agents that can act on their environment \citep{parr2022active}. Under active inference, perception is inference about the causes of sensory data, learning is inference about model parameters, and action is inference about the best policy --- the course of action that will minimize expected future surprise. The framework naturally decomposes action selection into epistemic (information-seeking) and pragmatic (goal-directed) components, providing a unified account of curiosity, exploration, and exploitation.
+Active inference extends this principle to agents that can act on their environment \citep{parr2022active}. Under active inference, perception is inference about the causes of sensory data, learning is inference about model parameters, and action is inference about the best policy, the course of action that will minimize expected future surprise. The framework naturally decomposes action selection into epistemic (information-seeking) and pragmatic (goal-directed) components, providing a unified account of curiosity, exploration, and exploitation.
 
-Crucially, the FEP is \emph{scale-free}: the same principles apply at every level of organization, from molecular interactions to neural circuits to social groups \citep{friston2019particular, kirchhoff2018markov, ramstead2023inner}. When a system contains subsystems that themselves have Markov blankets, these blankets \emph{nest}, creating a hierarchical architecture in which each level performs its own active inference while serving as a component of the level above. This multi-scale self-organization is what distinguishes genuinely cognitive systems from merely physical ones \citep{kirchhoff2018markov}.
+Crucially, the FEP is \emph{scale-free}. The same principles apply at every level of organization, from molecular interactions to neural circuits to social groups \citep{friston2019particular, kirchhoff2018markov, ramstead2023inner}. When a system contains subsystems that themselves have Markov blankets, these blankets \emph{nest}, creating a hierarchical architecture in which each level performs its own active inference while serving as a component of the level above. This multi-scale self-organization is what distinguishes genuinely cognitive systems from merely physical ones \citep{kirchhoff2018markov}.
 
-Recent work has proposed that these principles can guide the design of ecosystems of natural and artificial intelligence \citep{friston2022ecosystems}. Rather than building monolithic AI systems, one can engineer distributed networks of intelligent agents that coordinate through shared generative models, forming emergent collective intelligence at superordinate scales. The substrate for this coordination --- the shared medium through which agents exchange beliefs and observations --- is what we identify with the semiotic data fabric.
+Recent work has proposed that these principles can guide the design of ecosystems of natural and artificial intelligence \citep{friston2022ecosystems}. Rather than building monolithic AI systems, one can engineer distributed networks of intelligent agents that coordinate through shared generative models, forming emergent collective intelligence at superordinate scales. The substrate for this coordination, the shared medium through which agents exchange beliefs and observations, is what we identify with the semiotic data fabric.
 
 \subsection{The Peircean Bridge: Semiotics Meets Statistical Physics}
 \label{sec:peirce_intro}
 
-The missing link between data architecture and cognitive science is \emph{semiotics} --- the study of signs and meaning-making. C.~S.~Peirce's triadic semiotics describes meaning as an inferential process: a \emph{sign} (representamen) stands for an \emph{object} (referent) to produce an \emph{interpretant} (meaning) in the mind of an interpreter \citep{peirce1931collected}. Critically, this is not a static relation but a \emph{process} --- \emph{semiosis} --- in which each interpretant becomes a new sign, generating unlimited chains of meaning.
+The missing link between data architecture and cognitive science is \emph{semiotics}, the study of signs and meaning-making. C.~S.~Peirce's triadic semiotics describes meaning as an inferential process: a \emph{sign} (representamen) stands for an \emph{object} (referent) to produce an \emph{interpretant} (meaning) in the mind of an interpreter \citep{peirce1931collected}. This is not a static relation but a \emph{process}, \emph{semiosis}, in which each interpretant becomes a new sign, generating unlimited chains of meaning.
 
-Recent work in active inference has established a formal isomorphism between Peircean semiosis and variational inference \citep{constant2019regimes, ramstead2016cultural, albarracin2022epistemic}. The sign maps to an observation, the object maps to a hidden state, and the interpretant maps to the updated posterior belief. Semiosis --- the generation of meaning from signs --- \emph{is} variational inference, described in a different vocabulary.
+Recent work in active inference has established a formal isomorphism between Peircean semiosis and variational inference \citep{constant2019regimes, ramstead2016cultural, albarracin2022epistemic}. The sign maps to an observation, the object maps to a hidden state, and the interpretant maps to the updated posterior belief. Semiosis, the generation of meaning from signs, \emph{is} variational inference, described in a different vocabulary.
 
-This isomorphism is not merely an analogy. As \citet{albarracin2025nonmarkovian} argue, meaning and context are inherently non-Markovian: the interpretation of a sign depends on the full history of prior interpretations. The FEP accommodates this through temporal depth in generative models and through the non-Markovian dynamics that arise when systems maintain identity over time.
+This isomorphism is not merely an analogy. As \citet{albarracin2025nonmarkovian} argue, meaning and context are inherently non-Markovian. The interpretation of a sign depends on the full history of prior interpretations. The FEP accommodates this through temporal depth in generative models and through the non-Markovian dynamics that arise when systems maintain identity over time.
 
-SemApp's fundamental data primitive --- the \emph{Sign}, which binds a \emph{Signifier} (data value) with a \emph{Concept} (meaning) --- is a computational implementation of Peirce's triadic sign. This paper formalizes this connection and shows that SemApp's entire architecture can be understood as a system performing active inference over semiotic content.
+SemApp's fundamental data primitive, the \emph{Sign}, which binds a \emph{Signifier} (data value) with a \emph{Concept} (meaning), is a computational implementation of Peirce's triadic sign. This paper formalizes this connection and shows that SemApp's entire architecture can be understood as a system performing active inference over semiotic content.
 
 \subsection{Contributions and Paper Overview}
 \label{sec:contributions}
 
-This paper makes the following contributions:
+This paper develops a unified account of semiotic processes and variational inference, making several key contributions. First, we establish a formal correspondence between Peircean semiosis and variational inference (Section~\ref{sec:signs_vfe}), demonstrating that the creation of Signs in SemApp can be understood as minimizing a form of semiotic free energy. Building on this, we show that SemApp's three-layer architecture naturally induces a hierarchy of nested Markov blankets (Section~\ref{sec:nested}), such that conditional independence holds between Artifacts (external states), Signs (blanket states), and domain models (internal states) under an explicit graphical model of the architecture.
 
-\begin{enumerate}[label=(\roman*)]
-    \item We establish a \textbf{formal isomorphism} between Peircean semiosis and variational inference (Theorem~\ref{thm:semiotic_fe}), showing that Sign creation in SemApp minimizes semiotic free energy.
+We then introduce a formal account of Process Waves as active inference agents, and demonstrate how the DEEP value decomposition \citep{constant2019regimes} maps directly onto concrete operations within SemApp. Extending this framework, we derive the fabric-level variational free energy $\mathcal{F}_{\text{fabric}}$ from the fabric's generative model under a mean-field factorization (Section~\ref{sec:fmaterial}), and argue that it tends to decrease under consistent Wave processing, a property validated by simulation. Finally, we provide a computational demonstration using discrete active inference following the generative model specification of \texttt{pymdp} \citep{heins2022pymdp}, validating the formal correspondence through four experiments on a simulated semiotic fabric that progress from single-Wave Artifact classification to multi-scale free energy minimization across an integrated fabric.
 
-    \item We prove that SemApp's \textbf{three-layer architecture constitutes nested Markov blankets} (Theorem~\ref{thm:nested_blanket}), with conditional independence holding between Artifacts (external states), Signs (blanket states), and domain models (internal states).
+The remainder of the paper is organized as follows. Section~\ref{sec:background} reviews the theoretical foundations, including the Free Energy Principle, Peircean semiotics, and the SemApp architecture. Section~\ref{sec:formal} develops the formal mapping and constitutes the mathematical core of the paper. Section~\ref{sec:fmaterial} derives the fabric-level free energy, while Section~\ref{sec:simulation} presents the computational experiments. Section~\ref{sec:implications} discusses the broader implications for active inference and defense data architectures. Section~\ref{sec:discussion} outlines limitations and future directions, and Section~\ref{sec:conclusion} concludes.
 
-    \item We formalize \textbf{Process Waves as active inference agents} (Definition~\ref{def:wave_gm}) and show that the DEEP value decomposition \citep{constant2019regimes} maps onto concrete SemApp operations.
-
-    \item We introduce the \textbf{material free energy} $\mathcal{F}_{\text{material}}$ of the fabric (Definition~\ref{def:f_material}) and show its monotonic decrease under consistent Wave processing (Proposition~\ref{prop:monotone}).
-
-    \item We provide a \textbf{computational demonstration} using \texttt{pymdp} \citep{heins2022pymdp} that validates the formal mapping through three experiments on a simulated semiotic fabric.
-\end{enumerate}
-
-The paper is structured as follows. Section~\ref{sec:background} presents the theoretical foundations: the FEP, Peircean semiotics, and SemApp's architecture. Section~\ref{sec:formal} develops the formal mapping --- the mathematical core of the paper. Section~\ref{sec:fmaterial} introduces the material free energy framework. Section~\ref{sec:simulation} presents the computational demonstration. Section~\ref{sec:implications} discusses implications for both active inference theory and defense data architecture. Section~\ref{sec:discussion} addresses limitations and future directions. Section~\ref{sec:conclusion} concludes.
-
-\begin{opbox}[Note to readers]
-This paper serves two communities. For readers from the active inference and cognitive science community, the novel contribution is the mapping of FEP concepts onto a production-scale data architecture. For readers from the defense and intelligence community, the novel contribution is a theoretical framework that explains \emph{why} SemApp works and predicts \emph{how} to make it work better. Mathematical content is presented in blue boxes that can be skipped on a first reading without losing the narrative thread. Green boxes like this one provide operational implications.
-\end{opbox}
+% \begin{opbox}[Note to readers]
+% This paper serves two communities. For readers from the active inference and cognitive science community, the novel contribution is the mapping of FEP concepts onto a production-scale data architecture. For readers from the defense and intelligence community, the novel contribution is a theoretical framework that explains \emph{why} SemApp works and predicts \emph{how} to make it work better. Mathematical content is presented in blue boxes that can be skipped on a first reading without losing the narrative thread. Green boxes like this one provide operational implications.
+% \end{opbox}
 
 
 % ============================================================
@@ -187,93 +172,83 @@ This paper serves two communities. For readers from the active inference and cog
 \subsubsection{Variational Free Energy and the Generative Model}
 \label{sec:vfe}
 
-The Free Energy Principle begins with a simple observation: things that exist must, by definition, maintain their existence --- they must resist the tendency toward disorder mandated by the second law of thermodynamics. Any system that persists in a characteristic set of states can be described as if it possesses a boundary --- a \emph{Markov blanket} --- that separates its internal states from external states, and as if its internal dynamics implement a \emph{generative model} of how its sensory observations are caused by external states \citep{friston2019particular}.
+The Free Energy Principle begins with a simple observation. Things that exist must, by definition, maintain their existence, they must resist the tendency toward disorder mandated by the second law of thermodynamics. Any system that persists in a characteristic set of states can be described as if it possesses a boundary, a \emph{Markov blanket}, that separates its internal states from external states, and as if its internal dynamics implement a \emph{generative model} of how its sensory observations are caused by external states \citep{friston2019particular}.
 
-\begin{formalbox}[Definition 1: Variational Free Energy]
-Let $\bo$ denote observations (sensory states), $\bs$ denote hidden states of the environment, $\bq(\bs)$ denote an approximate posterior distribution (the system's beliefs about hidden states), and $\bp(\bo, \bs)$ denote a generative model (the system's model of how observations arise from hidden states). The \textbf{variational free energy} is:
+Variational free energy is a tractable objective for approximate Bayesian inference. In our formulation, $\bo$ denotes observations (sensory states), $\bs$ hidden states of the environment, $\bq(\bs)$ an approximate posterior (the system's beliefs), and $\bp(\bo, \bs)$ a generative model describing how observations arise from hidden states. The variational free energy is defined as:
 \begin{equation}
 \label{eq:vfe}
-\mathcal{F} = \E_{\bq(\bs)}\!\left[\ln \bq(\bs) - \ln \bp(\bo, \bs)\right] = \underbrace{\KL\!\left[\bq(\bs) \,\|\, \bp(\bs|\bo)\right]}_{\geq\, 0} - \underbrace{\ln \bp(\bo)}_{\text{log evidence}}
+\mathcal{F} = \E_{\bq(\bs)}\!\left[\ln \bq(\bs) - \ln \bp(\bo, \bs)\right]
+= \KL\!\left[\bq(\bs) \,\|\, \bp(\bs|\bo)\right] - \ln \bp(\bo)
 \end{equation}
-Since the KL divergence is non-negative, $\mathcal{F} \geq -\ln \bp(\bo)$. Minimizing $\mathcal{F}$ with respect to $\bq$ therefore simultaneously:
-\begin{itemize}[nosep]
-    \item Makes the approximate posterior $\bq(\bs)$ approach the true posterior $\bp(\bs|\bo)$ (perception)
-    \item Maximizes a lower bound on the log model evidence $\ln \bp(\bo)$ (self-evidencing)
-\end{itemize}
-The generative model factorizes as:
+
+Since the Kullback–Leibler (KL) divergence is non-negative, $\mathcal{F}$ upper bounds surprise (negative log evidence), i.e., $\mathcal{F} \geq -\ln \bp(\bo)$. Minimizing $\mathcal{F}$ with respect to $\bq$ therefore serves two complementary roles. It drives the approximate posterior $\bq(\bs)$ toward the true posterior $\bp(\bs|\bo)$ (perception), while simultaneously maximizing a lower bound on model evidence $\ln \bp(\bo)$ (self-evidencing).
+
+The generative model typically factorizes as:
 \begin{equation}
 \label{eq:gm}
-\bp(\bo, \bs) = \underbrace{\bp(\bo|\bs)}_{\text{likelihood}} \cdot \underbrace{\bp(\bs)}_{\text{prior}}
+\bp(\bo, \bs) = \bp(\bo|\bs)\,\bp(\bs)
 \end{equation}
-\end{formalbox}
+where $\bp(\bo|\bs)$ is the likelihood mapping hidden states to observations, and $\bp(\bs)$ encodes prior beliefs over hidden states.
 
-In the discrete-state active inference framework \citep{parr2022active}, the generative model is parameterized by four sets of matrices:
-\begin{itemize}[nosep]
-    \item $\mathbf{A}$: likelihood mapping $\bp(\bo|\bs)$ --- how hidden states generate observations
-    \item $\mathbf{B}$: transition dynamics $\bp(\bs_{t+1}|\bs_t, \ba_t)$ --- how states evolve under actions
-    \item $\mathbf{C}$: log-preferences $\ln \bp(\bo)$ --- what observations the agent expects/prefers
-    \item $\mathbf{D}$: initial state priors $\bp(\bs_0)$ --- beliefs about the starting state
-\end{itemize}
-These matrices fully specify an agent's generative model and are the objects we will map onto SemApp's architecture.
+In the discrete-state active inference framework \citep{parr2022active}, the generative model is typically parameterized by four sets of matrices. The $\mathbf{A}$ matrix encodes the likelihood mapping $\bp(\bo|\bs)$, specifying how hidden states generate observations. The $\mathbf{B}$ matrix captures transition dynamics $\bp(\bs_{t+1}|\bs_t, \ba_t)$, describing how hidden states evolve over time under the influence of actions. Preferences over outcomes are encoded by the $\mathbf{C}$ matrix, which corresponds to log-preferences $\ln \bp(\bo)$ and determines which observations are expected or desired. Finally, the $\mathbf{D}$ matrix specifies prior beliefs over initial states $\bp(\bs_0)$.
+
+These matrices fully define the agent’s generative model. In what follows, we will map each of these components onto corresponding structures within the SemApp architecture.
 
 \subsubsection{Expected Free Energy and the DEEP Decomposition}
 \label{sec:efe}
 
-Active inference extends perception to action: an agent selects policies (sequences of actions) $\bpi$ that minimize \emph{expected free energy} --- the free energy the agent expects to encounter in the future if it follows a given policy.
+Active inference extends perception to action. An agent selects policies (sequences of actions) $\bpi$ that minimize \emph{expected free energy}, the free energy the agent expects to encounter in the future if it follows a given policy.
 
-\begin{formalbox}[Definition 2: Expected Free Energy and DEEP Decomposition]
-The \textbf{expected free energy} of a policy $\bpi$ at future time $\tau$ is:
+Expected free energy gives us the objective function for policy selection under active inference. For a given policy $\bpi$ at a future time $\tau$, it is defined as:
 \begin{equation}
 \label{eq:efe}
 G(\bpi, \tau) = \E_{\tilde{\bq}}\!\left[\ln \bq(\bs_\tau | \bpi) - \ln \bp(\bo_\tau, \bs_\tau)\right]
 \end{equation}
-where $\tilde{\bq} = \bq(\bo_\tau, \bs_\tau | \bpi)$ is the predicted joint distribution over future observations and states under policy $\bpi$. This decomposes into:
+where $\tilde{\bq} = \bq(\bo_\tau, \bs_\tau | \bpi)$ denotes the predicted joint distribution over future observations and hidden states under policy $\bpi$. Intuitively, this quantity evaluates the expected divergence between predicted beliefs and the generative model over future trajectories.
+
+This objective can be decomposed into distinct functional contributions:
 \begin{equation}
 \label{eq:deep}
 G(\bpi, \tau) = \underbrace{-\E_{\tilde{\bq}}\!\left[\ln \bp(\bo_\tau)\right]}_{\text{Pragmatic value}} + \underbrace{-\E_{\tilde{\bq}}\!\left[\mathcal{H}\!\left[\bp(\bo_\tau|\bs_\tau)\right]\right]}_{\text{Epistemic value (ambiguity)}}
 \end{equation}
-Following \citet{constant2019regimes}, the expected free energy further decomposes into DEEP components:
-\begin{itemize}[nosep]
-    \item \textbf{D}eontic: value from conforming to environmental norms and deontic cues
-    \item \textbf{E}pistemic: information gain about hidden states (resolving uncertainty)
-    \item \textbf{E}xtrinsic/Pragmatic: achieving preferred outcomes
-    \item \textbf{P}referential: fulfilling prior preferences about observations
-\end{itemize}
-An agent selects the policy that minimizes total expected free energy:
+The first term captures pragmatic (or extrinsic) value, favouring outcomes that align with prior preferences, while the second term reflects epistemic value, encouraging policies that reduce ambiguity by sampling informative observations.
+
+Following \citet{constant2019regimes}, this decomposition can be further refined into DEEP components. These distinguish between deontic value, arising from conformity to environmental norms and cues; epistemic value, associated with information gain about hidden states; extrinsic or pragmatic value, linked to achieving preferred outcomes; and preferential value, reflecting prior expectations over observations.
+
+Policy selection then proceeds by minimizing expected free energy over future time:
 \begin{equation}
 \label{eq:policy}
 \bpi^* = \arg\min_{\bpi} \sum_{\tau} G(\bpi, \tau)
 \end{equation}
-\end{formalbox}
+so that agents choose actions that balance goal-directed behaviour with uncertainty reduction.
 
-\begin{opbox}[Operational Implication]
-The DEEP decomposition will map directly onto SemApp operations: Deontic value corresponds to classification and access control compliance; Epistemic value to query and discovery operations; Pragmatic value to enrichment and mission objectives; Preferential value to domain model conformance.
-\end{opbox}
+% \begin{opbox}[Operational Implication]
+% The DEEP decomposition will map directly onto SemApp operations: Deontic value corresponds to classification and access control compliance; Epistemic value to query and discovery operations; Pragmatic value to enrichment and mission objectives; Preferential value to domain model conformance.
+% \end{opbox}
 
 \subsubsection{Nested Markov Blankets and Multi-Scale Self-Organization}
 \label{sec:nested_blankets}
 
-A Markov blanket formalizes the boundary of a ``thing'' --- the minimal set of states that renders a system's internal states conditionally independent of its external environment.
+A Markov blanket formalizes the boundary of a ``thing'', the minimal set of states that renders a system's internal states conditionally independent of its external environment.
 
-\begin{formalbox}[Definition 3: Markov Blanket Partition]
-A system's state space $\mathcal{X}$ admits a \textbf{Markov blanket partition} if it can be decomposed as:
+A system admits a Markov blanket partition when its state space $\mathcal{X}$ can be decomposed into four classes of states:
 \begin{equation}
 \label{eq:blanket}
 \mathcal{X} = \bmu \cup \bs \cup \ba \cup \boldeta
 \end{equation}
-where $\bmu$ are \emph{internal states}, $\bs$ are \emph{sensory states}, $\ba$ are \emph{active states}, and $\boldeta$ are \emph{external states}, such that:
+where $\bmu$ denote internal states, $\bs$ sensory states, $\ba$ active states, and $\boldeta$ external states. This partition is defined by a conditional independence structure such that:
 \begin{equation}
 \label{eq:ci}
 \bp(\bmu, \boldeta \,|\, \bs, \ba) = \bp(\bmu \,|\, \bs, \ba) \cdot \bp(\boldeta \,|\, \bs, \ba)
 \end{equation}
-The \emph{blanket states} $\mathcal{B} = \bs \cup \ba$ mediate all statistical dependencies between internal and external states. External states influence internal states only through sensory states; internal states influence external states only through active states.
-\end{formalbox}
 
-The crucial insight of \citet{friston2019particular} is that Markov blankets \emph{nest}: if a system has a Markov blanket, and its internal states themselves admit Markov blanket partitions, then one obtains a recursive, hierarchical structure. At each level, the same active inference dynamics operate --- perception, action, and free energy minimization --- while the whole system self-organizes into a multi-scale cognitive architecture \citep{kirchhoff2018markov, ramstead2023inner}.
+In this formulation, the sensory and active states together form the Markov blanket, $\mathcal{B} = \bs \cup \ba$, which mediates all statistical dependencies between internal and external states. External states can influence internal states only via sensory states, while internal states can influence external states only through active states. This separation induces a structured interface between a system and its environment, enabling the formulation of perception and action as coupled inferential processes.
 
-This nesting is not optional or decorative. As \citet{kirchhoff2018markov} argue in ``The Markov Blankets of Life,'' the recursive nesting of blankets is precisely what distinguishes genuinely cognitive (living) systems from merely physical ones. The inner screen hypothesis of \citet{ramstead2023inner} further shows that the deepest level of this nested hierarchy --- the irreducible internal Markov blanket --- constitutes the computational substrate for the most integrated forms of information processing, including consciousness.
+The crucial insight of \citet{friston2019particular} is that Markov blankets \emph{nest}. If a system has a Markov blanket, and its internal states themselves admit Markov blanket partitions, then one obtains a recursive, hierarchical structure. At each level, the same active inference dynamics operate, perception, action, and free energy minimization, while the whole system self-organizes into a multi-scale cognitive architecture \citep{kirchhoff2018markov, ramstead2023inner}.
 
-For our purposes, the key implication is architectural: \emph{any system organized into nested Markov blankets, with active inference dynamics at each level, constitutes a cognitive system in the formal sense defined by the FEP}. This is implementation-independent: the FEP makes no requirement on the physical substrate, only on the informational structure \citep{fields2025inner}.
+This nesting is not optional or decorative. As \citet{kirchhoff2018markov} argue in ``The Markov Blankets of Life,'' the recursive nesting of blankets is precisely what distinguishes genuinely cognitive (living) systems from merely physical ones. The inner screen hypothesis of \citet{ramstead2023inner} further shows that the deepest level of this nested hierarchy, the irreducible internal Markov blanket, constitutes the computational substrate for the most integrated forms of information processing, including consciousness.
+
+For our purposes, the key implication is architectural. \emph{Any system organized into nested Markov blankets, with active inference dynamics at each level, constitutes a cognitive system in the formal sense defined by the FEP}. This is implementation-independent: the FEP makes no requirement on the physical substrate, only on the informational structure \citep{fields2025inner}.
 
 
 \subsection{Peircean Semiotics as Inferential Process}
@@ -281,16 +256,15 @@ For our purposes, the key implication is architectural: \emph{any system organiz
 
 \subsubsection{The Sign Triad and Unlimited Semiosis}
 
-C.~S.~Peirce's semiotics describes meaning not as a property of symbols but as a \emph{process} --- \emph{semiosis} --- in which a \emph{sign} (representamen) stands for an \emph{object} (referent) to produce an \emph{interpretant} (meaning) in the mind of an interpreter \citep{peirce1931collected}. The interpretant is itself a sign, capable of generating further interpretants in an open-ended chain that Peirce termed \emph{unlimited semiosis}.
+C.~S.~Peirce's semiotics describes meaning as a \emph{process}, \emph{semiosis}, in which a \emph{sign} (representamen) stands for an \emph{object} (referent) to produce an \emph{interpretant} (meaning) in the mind of an interpreter \citep{peirce1931collected}. The interpretant is itself a sign, capable of generating further interpretants in an open-ended chain that Peirce termed \emph{unlimited semiosis}.
 
-This process-oriented view of meaning aligns naturally with the dynamical perspective of active inference. Rather than asking ``What does this datum mean?'' (a static question), semiosis asks ``What meaning does this datum generate in the context of this interpreter's model?'' (a dynamical question). The answer depends on the interpreter's generative model --- its priors, likelihood mappings, and preferences --- making meaning inherently perspectival and context-dependent.
+This process-oriented view of meaning aligns naturally with the dynamical perspective of active inference. Rather than asking ``What does this datum mean?'' (a static question), semiosis asks ``What meaning does this datum generate in the context of this interpreter's model?'' (a dynamical question). The answer depends on the interpreter's generative model, its priors, likelihood mappings, and preferences, making meaning inherently perspectival and context-dependent.
 
 \subsubsection{Semiosis as Abductive Inference}
 
-Peirce himself characterized semiosis as a form of \emph{abduction} --- inference to the best explanation. Given an observation (sign), the interpreter abduces the most plausible hidden cause (object) and forms a belief (interpretant) accordingly. This is precisely what variational inference does: given an observation $\bo$, it finds the distribution $\bq(\bs)$ that best explains $\bo$ under the generative model $\bp(\bo, \bs)$.
+Peirce himself characterized semiosis as a form of \emph{abduction}, inference to the best explanation. Given an observation (sign), the interpreter abduces the most plausible hidden cause (object) and forms a belief (interpretant) accordingly. This is precisely what variational inference does: given an observation $\bo$, it finds the distribution $\bq(\bs)$ that best explains $\bo$ under the generative model $\bp(\bo, \bs)$.
 
-\begin{formalbox}[Proposition 1: The Peirce--FEP Isomorphism]
-\label{prop:peirce}
+
 There exists a structural isomorphism between Peircean semiosis and variational inference under the FEP:
 
 \vspace{4pt}
@@ -310,14 +284,14 @@ Ground (context) & Generative model & $\bp(\bo, \bs)$ \\
 \end{center}
 
 \vspace{4pt}
-\noindent This is not merely an analogy: the mathematics are identical. In both frameworks, an observation constrains a posterior belief through a model, and the resulting belief becomes the input for subsequent inference. The isomorphism holds at the level of the variational calculus.
-\end{formalbox}
+\noindent This is not merely an analogy. The mathematics are identical. In both frameworks, an observation constrains a posterior belief through a model, and the resulting belief becomes the input for subsequent inference. The isomorphism holds at the level of the variational calculus.
+
 
 \subsubsection{From Individual Semiosis to Shared Meaning}
 
-Human cognition is fundamentally distributed: we think \emph{through other minds} by maintaining shared generative models \citep{veissiere2020thinking}. Cultural scripts \citep{albarracin2021variational}, narratives \citep{bouizegarene2023narrative}, and social norms \citep{constant2019regimes} all function as shared priors that coordinate inference across individuals without centralized control.
+Human cognition is fundamentally distributed. We think \emph{through other minds} by maintaining shared generative models \citep{veissiere2020thinking}. Cultural scripts \citep{albarracin2021variational}, narratives \citep{bouizegarene2023narrative}, and social norms \citep{constant2019regimes} all function as shared priors that coordinate inference across individuals without centralized control.
 
-\citet{guenincarlut2023embedded} introduce the concept of \emph{embedded normativity}: norms and values are not merely represented in agents' heads but are physically embedded in the material and social environment. The affordance landscape of a cultural niche --- its tools, symbols, institutions, and data structures --- carries normative content that shapes all inference performed within it. This is the theoretical foundation for treating a data fabric as a cognitive substrate: if norms can be embedded in material structures, and if those structures participate in active inference, then the fabric is not merely a tool that minds use --- it is a constitutive part of the cognitive system.
+\citet{guenincarlut2023embedded} introduce the concept of \emph{embedded normativity}. Norms and values are physically embedded in the material and social environment. The affordance landscape of a cultural niche, its tools, symbols, institutions, and data structures, carries normative content that shapes all inference performed within it. This is the theoretical foundation for treating a data fabric as a cognitive substrate. If norms can be embedded in material structures, and if those structures participate in active inference, then the fabric is not merely a tool that minds use, it is a constitutive part of the cognitive system.
 
 \subsection{The SemApp Architecture}
 \label{sec:semapp}
@@ -326,43 +300,29 @@ SemApp (Semiotic Apparatus) is a data fabric architecture developed by Mission F
 
 \subsubsection{The Sign Representation Framework (SRF)}
 
-The atom of information in SemApp is the \textbf{Sign} --- a computational element that binds a \emph{Signifier} (a binary blob representing any data value: number, string, symbol, image) with a \emph{Concept} (a meaning specified in some domain data model). A Sign may also carry a geometry (making it a GIS Feature), a temporal period (making it an Activity-Based Intelligence Event), and for quantities, a unit within a system of units.
+The atom of information in SemApp is the \textbf{Sign}, a computational element that binds a \emph{Signifier} (a binary blob representing any data value: number, string, symbol, image) with a \emph{Concept} (a meaning specified in some domain data model). A Sign may also carry a geometry (making it a GIS Feature), a temporal period (making it an Activity-Based Intelligence Event), and for quantities, a unit within a system of units.
 
-Signs are linked through four types of relations:
-\begin{itemize}[nosep]
-    \item \textbf{Associations}: subject--predicate--object relations between Signs, where predicates are defined in domain models
-    \item \textbf{Reification}: wrapping one or more Signs within another Sign, enabling aggregation, data cleansing, and domain-model masquerading
-    \item \textbf{Context}: attribute links connecting descriptive Signs to a subject Sign
-    \item \textbf{Mentions}: provenance links connecting extracted Signs back to their source Artifacts
-\end{itemize}
+Signs are connected through a small set of relational structures that define how meaning is composed and propagated within the fabric. Associations capture subject--predicate--object relations between Signs, where predicates are defined by domain models and encode the semantic structure of the system. Reification allows one or more Signs to be wrapped within another Sign, supporting aggregation, data cleansing, and the ability to reinterpret content across domain models. Context relations link descriptive Signs to a given subject Sign, enriching it with additional attributes, while mention relations provide provenance by connecting extracted Signs back to their source Artifacts.
 
-Every SRF element carries a \emph{classification label} (controlling data releasability) and a \emph{Perceiver} (the entity that created it --- a user, application, Process Wave, or domain model). Signs are unique (distinguished by hash-computed IDs) and, with narrow exceptions, immutable.
+Each element in the SRF carries a classification label, which governs data releasability, as well as a Perceiver, identifying the entity responsible for its creation—whether a user, application, Process Wave, or domain model. Signs are uniquely identified through hash-based IDs and are, with narrow exceptions, immutable, ensuring traceability and consistency across the fabric.
 
 \subsubsection{The Three-Layer Architecture}
 
-SemApp organizes data into three layers:
-\begin{itemize}[nosep]
-    \item \textbf{Layer 1 --- Artifacts}: A unified store for unstructured data (files of any kind). Only a small reference record is persisted, enabling ``no-byte ingest'' where data need not be moved.
-    \item \textbf{Layer 2 --- Signs}: A unified store for structured data. Signs are indexed semantically, textually, geospatially, and temporally, making them discoverable via SemApp's query service.
-    \item \textbf{Layer 3 --- Domain Models}: A unified store for domain data models, using an OWL-full-like representation. Any domain model can be represented; standardization is supported but not required.
-\end{itemize}
+SemApp organizes data into a three-layer architecture that separates raw data, structured representations, and domain semantics. At the first layer, Artifacts provide a unified store for unstructured data of any kind. Rather than ingesting full data payloads, only lightweight reference records are persisted, enabling a ``no-byte ingest'' approach in which data can remain in place while still being accessible.
 
-This architecture decouples the storage model from the domain model, accommodating any data from any source without constraining or modifying domain semantics.
+The second layer consists of Signs, which form a unified store for structured data. Signs are indexed across multiple dimensions—semantic, textual, geospatial, and temporal—making them directly discoverable through SemApp’s query services and enabling flexible retrieval across heterogeneous data sources.
+
+At the third layer, Domain Models provide a unified representation of domain-specific schemas using an OWL-full-like formalism. This allows arbitrary domain models to be expressed without enforcing rigid standardization, while still supporting interoperability where needed.
+
+Taken together, this architecture decouples the storage model from the domain model, allowing data from any source to be incorporated without constraining or altering its underlying semantics.
 
 \subsubsection{The Process Wave Framework (PWF)}
 
-The PWF replaces the traditional pipeline model with a wave model: waves of processing execute concurrently over the entire data fabric, where each Wave uses the unified API to find and operate on relevant data. Rather than pushing data through pre-configured pipelines, \emph{processing moves to the data}.
+The PWF replaces the traditional pipeline model with a distributed, wave-based approach to computation. Instead of pushing data through pre-configured pipelines, Waves execute concurrently across the entire data fabric, using a unified API to discover and operate on relevant data. In this paradigm, processing moves to the data rather than requiring data movement across systems.
 
-A Process Wave is typically a containerized process that:
-\begin{enumerate}[nosep]
-    \item Identifies input data by some characteristic(s) via the unified API
-    \item Performs its specific processing action
-    \item Asserts enrichment Signs and relations back onto the fabric
-    \item Leaves a \emph{fingerprint} on processed elements for provenance and deduplication
-\end{enumerate}
+A Process Wave is typically implemented as a containerized process that begins by identifying relevant input data based on specified characteristics through the unified API. It then performs its designated transformation or analysis, and asserts the resulting enrichment back onto the fabric in the form of new Signs and relations. As part of this process, each Wave leaves a fingerprint on the elements it has processed, enabling provenance tracking and deduplication.
 
-The enrichment produced by any Wave is immediately available to all other Waves, applications, and users, creating a network effect: each new Wave benefits from all previous enrichments while adding its own contributions for future Waves to leverage.
-
+Because all enrichments are written directly to the shared fabric, the outputs of any given Wave become immediately available to all other Waves, applications, and users. This creates a cumulative network effect. Each Wave builds on prior enrichments while contributing new structure and information for subsequent Waves to exploit.
 
 % ============================================================
 % 3. THE FORMAL MAPPING: SEMAPP AS ACTIVE INFERENCE
@@ -370,136 +330,95 @@ The enrichment produced by any Wave is immediately available to all other Waves,
 \section{The Formal Mapping: SemApp as Active Inference}
 \label{sec:formal}
 
-We now develop the formal correspondence between SemApp's architecture and the active inference framework. This section contains the paper's core theoretical contributions.
-
 \subsection{Signs as Variational Inference: The Semiosis--FEP Isomorphism}
 \label{sec:signs_vfe}
 
-We begin by formalizing the claim that Sign creation in SemApp is an act of variational inference --- that binding a Signifier with a Concept is semiosis in the Peircean sense, and that this semiosis minimizes a well-defined free energy functional.
+We now formalize the claim that Sign creation in SemApp constitutes an act of variational inference. In this setting, binding a Signifier with a Concept corresponds to semiosis in the Peircean sense, and can be understood as minimizing a well-defined free energy functional.
+$\sigma = (\text{Signifier}, \text{Concept})$ denote a Sign in the SRF. We interpret the Signifier $o_\sigma$ as an observed data value (a binary blob), and introduce a hidden variable $s$ corresponding to the real-world referent or state that the Sign is about. The Concept associated with the Sign, denoted $\bq_\sigma(s)$, is then a belief distribution over possible referents. The generative model is specified by a likelihood $\bp(o_\sigma | s)$, describing how referents generate observations, and a prior $\bp(s)$, encoding domain-level expectations (Layer 3).
 
-\begin{formalbox}[Theorem 1: The Semiotic Free Energy Theorem]
-\label{thm:semiotic_fe}
-Let $\sigma = (\text{Signifier}, \text{Concept})$ denote a Sign in the SRF. Define:
-\begin{itemize}[nosep]
-    \item $o_\sigma$: the Signifier --- the observed data value (a binary blob)
-    \item $s$: the hidden referent --- the real-world entity or state that the Sign is about
-    \item $\bq_\sigma(s) \equiv$ Concept: the Sign's semantic attribution --- a belief distribution over possible referents
-    \item $\bp(o_\sigma | s)$: the likelihood --- how the referent $s$ generates the observed data $o_\sigma$, encoded in the domain model
-    \item $\bp(s)$: the prior --- the domain model's expectation about what referents exist (Layer 3)
-\end{itemize}
-
-The \textbf{semiotic free energy} of Sign $\sigma$ is:
+Under this construction, the semiotic free energy of a Sign $\sigma$ is defined as:
 \begin{equation}
 \label{eq:semiotic_fe}
 \mathcal{F}_\sigma = \KL\!\left[\bq_\sigma(s) \,\|\, \bp(s|o_\sigma)\right] - \ln \bp(o_\sigma)
 \end{equation}
 
-Sign creation is an act of semiosis that minimizes $\mathcal{F}_\sigma$: the process that creates the Sign selects the Concept $\bq_\sigma^*$ that best explains the Signifier $o_\sigma$ under the domain model $\bp(o_\sigma, s) = \bp(o_\sigma|s)\bp(s)$. That is:
+Sign creation can then be understood as a process of semiosis that minimizes this quantity. Specifically, the system selects a Concept $\bq_\sigma$ that best explains the observed Signifier $o_\sigma$ under the generative model $\bp(o_\sigma, s) = \bp(o_\sigma|s)\bp(s)$:
 \begin{equation}
 \label{eq:semiosis}
 \bq_\sigma^* = \arg\min_{\bq_\sigma} \mathcal{F}_\sigma
 \end{equation}
 
-This minimum is achieved when $\bq_\sigma(s) = \bp(s|o_\sigma)$ (the true posterior), at which point $\mathcal{F}_\sigma = -\ln \bp(o_\sigma)$ (the negative log model evidence).
-\end{formalbox}
+This optimum is attained when the Concept matches the posterior, $\bq_\sigma(s) = \bp(s|o_\sigma)$, at which point the semiotic free energy reduces to the negative log model evidence, $\mathcal{F}_\sigma = -\ln \bp(o_\sigma)$. In this sense, semiosis in SemApp can be viewed as a form of approximate Bayesian inference, grounding the creation of Signs in the minimization of free energy.
 
-\begin{proof}[Proof sketch]
-By the non-negativity of KL divergence, $\mathcal{F}_\sigma \geq -\ln \bp(o_\sigma)$, with equality iff $\bq_\sigma(s) = \bp(s|o_\sigma)$. The Sign creation process --- whether performed by a human analyst, a Process Wave, or an ingest pipeline --- necessarily selects a Concept for the Signifier. The quality of this selection is measured by $\mathcal{F}_\sigma$: a well-chosen Concept (one that accurately captures what the data refers to) yields low semiotic free energy, while a poorly chosen Concept yields high free energy. Under the assumption that Sign creation processes are adapted to their domain (which is ensured by the domain model in Layer 3), the Concept assignment approximates the minimizer of $\mathcal{F}_\sigma$. \qed
-\end{proof}
+This construction follows directly from standard properties of variational free energy. In particular, by the non-negativity of the KL divergence, $\mathcal{F}_\sigma \geq -\ln \bp(o_\sigma)$, with equality if and only if $\bq_\sigma(s) = \bp(s|o_\sigma)$. This establishes that minimizing semiotic free energy corresponds to aligning the Concept with the posterior over referents given the observed Signifier.
 
-\paragraph{Associations as Belief Propagation.} Subject--Predicate--Object Associations between Signs encode conditional dependencies: the Association $(\sigma_i, \text{pred}, \sigma_j)$ encodes the belief $\bp(s_j | s_i, \text{pred})$. The network of Associations on the fabric is therefore a \emph{factor graph} --- a graphical model in which variables (Signs) are connected by factors (Associations). Querying the fabric for related Signs is equivalent to performing \emph{belief propagation} on this factor graph: messages (beliefs about hidden states) flow along the edges, updating posterior beliefs at each node.
+In practice, Sign creation—whether performed by a human analyst, a Process Wave, or an ingest pipeline—requires selecting a Concept for a given Signifier. The quality of this assignment can be understood in terms of $\mathcal{F}_\sigma$: Concepts that accurately capture the underlying referent yield lower semiotic free energy, while mismatched or ambiguous assignments result in higher values.
 
-\paragraph{Reification as Hierarchical Inference.} When a Sign $\sigma_{\text{high}}$ reifies (wraps) a set of lower-level Signs $\{\sigma_1, \ldots, \sigma_k\}$, it implements a \emph{hierarchical generative model}: the higher-level Sign represents a belief about the collection of lower-level Signs. In the language of active inference, reification introduces a new level in the generative model hierarchy:
+Assuming that Sign creation processes are adapted to their domain—an assumption grounded in the role of domain models in Layer 3—the resulting Concept assignments can be viewed as approximating the minimizer of $\mathcal{F}_\sigma$. In this sense, semiosis operates as a practical instantiation of variational inference, even when the underlying optimization is implicit or distributed across heterogeneous processes.
+
+Subject--Predicate--Object Associations between Signs encode conditional dependencies. The Association $(\sigma_i, \text{pred}, \sigma_j)$ encodes the belief $\bp(s_j | s_i, \text{pred})$. The network of Associations on the fabric is therefore a \emph{factor graph}, a graphical model in which variables (Signs) are connected by factors (Associations). Querying the fabric for related Signs is equivalent to performing \emph{belief propagation} on this factor graph: messages (beliefs about hidden states) flow along the edges, updating posterior beliefs at each node.
+When a Sign $\sigma_{\text{high}}$ reifies (wraps) a set of lower-level Signs $\{\sigma_1, \ldots, \sigma_k\}$, it implements a \emph{hierarchical generative model}. The higher-level Sign represents a belief about the collection of lower-level Signs. In the language of active inference, reification introduces a new level in the generative model hierarchy:
 \begin{equation}
 \bp(\bo, \bs^{(1)}, \bs^{(2)}) = \bp(\bo | \bs^{(1)}) \cdot \bp(\bs^{(1)} | \bs^{(2)}) \cdot \bp(\bs^{(2)})
 \end{equation}
-where $\bs^{(1)}$ corresponds to the lower-level Signs and $\bs^{(2)}$ to the reifying Sign. This is variational message passing across levels of a deep generative model --- the same mechanism that \citet{ramstead2023inner} identify as the basis for hierarchical processing in the brain.
+where $\bs^{(1)}$ corresponds to the lower-level Signs and $\bs^{(2)}$ to the reifying Sign. This is variational message passing across levels of a deep generative model, the same mechanism that \citet{ramstead2023inner} identify as the basis for hierarchical processing in the brain.
 
-\paragraph{Unlimited Semiosis as Recursive Inference.} When a Process Wave reads a Sign $\sigma_1$, processes it, and asserts a new enrichment Sign $\sigma_2$ (with a Mention link back to $\sigma_1$), this implements unlimited semiosis: the interpretant ($\sigma_2$) of the original sign ($\sigma_1$) becomes a new sign for subsequent interpreters. In active inference terms, the posterior $\bq_{\sigma_1}$ becomes a new observation for the next inference cycle, driving the recursive belief updating that \citet{albarracin2025nonmarkovian} argue is necessary for meaning in non-Markovian systems.
+When a Process Wave reads a Sign $\sigma_1$, processes it, and asserts a new enrichment Sign $\sigma_2$ (with a Mention link back to $\sigma_1$), this implements unlimited semiosis. The interpretant ($\sigma_2$) of the original sign ($\sigma_1$) becomes a new sign for subsequent interpreters. In active inference terms, the posterior $\bq_{\sigma_1}$ becomes a new observation for the next inference cycle, driving the recursive belief updating that \citet{albarracin2025nonmarkovian} argue is necessary for meaning in non-Markovian systems.
 
 
 \subsection{The Three Layers as Nested Markov Blankets}
 \label{sec:nested}
 
-We now prove that SemApp's three-layer architecture satisfies the formal requirements of a nested Markov blanket system.
+We now show that SemApp's three-layer architecture induces a Markov blanket structure, in which the Signs layer mediates all dependencies between raw data and domain models.
 
-\begin{formalbox}[Theorem 2: The Nested Blanket Theorem]
-\label{thm:nested_blanket}
-Let $\mathcal{X}_1$ denote the set of Artifact states (Layer 1), $\mathcal{X}_2$ the set of Sign states (Layer 2), and $\mathcal{X}_3$ the set of domain model states (Layer 3). Under the SemApp architecture, the three layers satisfy a Markov blanket partition:
-
+$\mathcal{X}_1$ denotes the set of Artifact states (Layer 1), $\mathcal{X}_2$ the set of Sign states (Layer 2), and $\mathcal{X}_3$ the set of domain model states (Layer 3). Under the SemApp architecture, these layers can be interpreted as forming a Markov blanket partition:
 \begin{equation}
 \label{eq:nested1}
 \bp(\mathcal{X}_1, \mathcal{X}_3 \,|\, \mathcal{X}_2) = \bp(\mathcal{X}_1 \,|\, \mathcal{X}_2) \cdot \bp(\mathcal{X}_3 \,|\, \mathcal{X}_2)
 \end{equation}
 
-with the identification:
-\begin{align}
-\boldeta &= \mathcal{X}_1 \quad \text{(external states: raw unstructured data)} \label{eq:external} \\
-\mathcal{B} &= \mathcal{X}_2 \quad \text{(blanket states: Signs with their Signifiers and relations)} \label{eq:blanket_layer} \\
-\bmu &= \mathcal{X}_3 \quad \text{(internal states: domain models / generative models)} \label{eq:internal}
-\end{align}
+In this correspondence, Artifacts play the role of external states, $\boldeta = \mathcal{X}_1$, as they consist of raw, unstructured data. Domain models correspond to internal states, $\bmu = \mathcal{X}_3$, encoding the system’s generative assumptions about the world. The Signs layer forms the Markov blanket, $\mathcal{B} = \mathcal{X}_2$, mediating all interactions between these two levels.
 
-Within the blanket layer, Signs decompose into sensory and active components:
-\begin{align}
-\bs &= \{\text{Signifiers, Mentions}\} \quad \text{(sensory: data flowing in from Artifacts)} \label{eq:sensory} \\
-\ba &= \{\text{Associations, Context links, Reification}\} \quad \text{(active: structure imposed on the fabric)} \label{eq:active}
-\end{align}
-\end{formalbox}
+This structure arises directly from the architectural constraints of SemApp. Artifacts do not directly reference domain models. They consist only of data and metadata, with no embedded semantic interpretation. Any linkage between an Artifact and a domain model must be established through Sign creation, in which a Process Wave extracts data and assigns Concepts drawn from a domain model. Conversely, domain models do not reference specific Artifacts; they define abstract Concepts and relations, and can only be instantiated through Signs that bind them to concrete data. As a result, all statistical dependencies between $\mathcal{X}_1$ and $\mathcal{X}_3$ are mediated by $\mathcal{X}_2$.
 
-\begin{proof}[Proof sketch]
-The conditional independence~\eqref{eq:nested1} follows from SemApp's architectural design:
+To make this claim precise, we specify a directed graphical model over the three layers. In the generative direction, domain models ($\mathcal{X}_3$) define the space of Concepts available for Sign creation; Signs ($\mathcal{X}_2$) bind these Concepts with data values drawn from Artifacts ($\mathcal{X}_1$). The joint distribution factorizes as:
+\begin{equation}
+\label{eq:dag_factorization}
+\bp(\mathcal{X}_1, \mathcal{X}_2, \mathcal{X}_3) = \bp(\mathcal{X}_1 \,|\, \mathcal{X}_2)\;\bp(\mathcal{X}_2 \,|\, \mathcal{X}_3)\;\bp(\mathcal{X}_3)
+\end{equation}
+corresponding to the directed acyclic graph $\mathcal{X}_3 \to \mathcal{X}_2 \to \mathcal{X}_1$. By d-separation, conditioning on the intermediate node $\mathcal{X}_2$ blocks the only path between $\mathcal{X}_1$ and $\mathcal{X}_3$, yielding the conditional independence in Equation~\ref{eq:nested1}. The absence of a direct $\mathcal{X}_1 \leftrightarrow \mathcal{X}_3$ edge is not an assumption imposed for mathematical convenience; it is an architectural invariant enforced by SemApp's API, which provides no mechanism for Artifacts and domain models to interact except through Signs. This graphical model is an idealization in the sense that side channels (e.g., file naming conventions that leak domain information into Artifact metadata) could introduce weak dependencies not captured by the DAG, but the architectural design deliberately minimizes such pathways.
 
-\textbf{(i) Artifacts do not directly reference domain models.} An Artifact (Layer 1) is a raw file with an address, size, type, and classification. It contains no domain model information. The only pathway from an Artifact to a domain model is through Sign extraction: a Process Wave reads the Artifact, creates Signs with Concepts drawn from a domain model, and links them via Mentions. Thus, any statistical dependency between $\mathcal{X}_1$ and $\mathcal{X}_3$ is mediated entirely by $\mathcal{X}_2$.
+Within the blanket layer, Signs can be further decomposed into sensory and active components. Signifiers and Mentions act as sensory states, carrying information from Artifacts into the system by encoding observed data values and their provenance. Associations, Context links, and Reification act as active states, imposing structure on the fabric and enabling downstream processing and discovery. In this sense, the Signs layer simultaneously receives information from the external world and acts back upon it through structured enrichment.
 
-\textbf{(ii) Domain models do not directly reference Artifacts.} A domain model (Layer 3) defines Concepts, predicates, and ontological relations. It does not reference specific Artifacts or their content. The only pathway from a domain model to Artifact-level data is through Signs that instantiate the model's Concepts with specific Signifier values. Thus, any statistical dependency between $\mathcal{X}_3$ and $\mathcal{X}_1$ is mediated entirely by $\mathcal{X}_2$.
+These properties show that the SemApp architecture implements a nested Markov blanket, with the Signs layer functioning as the interface through which external data and internal models are coupled.
 
-\textbf{(iii) The blanket decomposition.} Within Layer 2, Signifiers and Mentions carry information \emph{from} the external world (sensory states): the Signifier encodes the observed data value, and Mentions point back to source Artifacts. Associations, Context links, and Reification carry information \emph{toward} the external world (active states): they assert structure that enriches the fabric and makes it discoverable. The Concept binding is the \emph{internal} state of each Sign --- its semantic interpretation.
+This Markov blanket structure recurs at the level of individual Signs. Each Sign $\sigma$ can be understood as admitting its own local blanket partition. The internal states correspond to the Concept and Perceiver, which together encode the Sign’s semantic interpretation and provenance. Sensory states are given by the Signifier and Mentions, through which data enters from external sources and Artifacts. Active states are realized by Associations, Context, and Reification links, which impose structure on the surrounding fabric and propagate the Sign’s effects outward. Everything else in the system—other Signs, Artifacts, and domain models—constitutes the external states relative to the Sign.
 
-The full proof, including formal verification of the conditional independence conditions, is given in Appendix~A. \qed
-\end{proof}
+In this way, each Sign functions as a localized interface between data and semantics, embedding a Markov blanket that both receives information from and acts upon the broader semiotic fabric.
 
-\paragraph{The Sign-Level Blanket.} Each individual Sign $\sigma$ also admits a Markov blanket partition at a finer scale:
-\begin{itemize}[nosep]
-    \item \textbf{Internal}: Concept, Perceiver (the Sign's semantic content and provenance)
-    \item \textbf{Sensory}: Signifier, Mentions (data flowing in from sources)
-    \item \textbf{Active}: Associations, Context, Reification links (structure asserted outward)
-    \item \textbf{External}: all other Signs, Artifacts, and domain models
-\end{itemize}
+This yields the nested structure that \citet{friston2019particular} describes, blankets within blankets, each level performing its own active inference. The Sign-level blanket is nested within the layer-level blanket, which is nested within the fabric-level blanket (which separates the organizational data estate from the external environment).
 
-This yields the nested structure that \citet{friston2019particular} describes: blankets within blankets, each level performing its own active inference. The Sign-level blanket is nested within the layer-level blanket, which is nested within the fabric-level blanket (which separates the organizational data estate from the external environment).
+The nested blanket structure explains a key empirical observation about SemApp: new data sources and new Process Waves can be added without disrupting existing operations. This is because each new element creates its own Markov blanket, maintaining conditional independence from other elements at the same level. The architecture's resilience to change is not merely good engineering, it is a mathematical consequence of blanket integrity.
 
-\begin{opbox}[Operational Implication]
-The nested blanket structure explains a key empirical observation about SemApp: new data sources and new Process Waves can be added without disrupting existing operations. This is because each new element creates its own Markov blanket, maintaining conditional independence from other elements at the same level. The architecture's resilience to change is not merely good engineering --- it is a mathematical consequence of blanket integrity.
-\end{opbox}
 
 
 \subsection{Process Waves as Active Inference Agents}
 \label{sec:waves}
 
 Each Process Wave in SemApp can be formally characterized as an active inference agent operating on the semiotic fabric.
+A Process Wave $w$ can be understood as instantiating its own generative model over the semiotic fabric, $\bp_w(\bo, \bs)$, parameterized in the standard active inference form. The likelihood mapping $\mathbf{A}_w$ defines $\bp_w(\bo|\bs)$ and corresponds to the Wave’s query template, specifying the patterns it expects to observe in the fabric. The transition model $\mathbf{B}_w$ encodes $\bp_w(\bs_{t+1}|\bs_t, \ba_t)$, capturing how the Wave expects the state of the fabric to evolve under its actions. Preferences are given by $\mathbf{C}_w = \ln \bp_w(\bo)$, describing which observations the Wave aims to realize through processing, while priors $\mathbf{D}_w = \bp_w(\bs_0)$ encode its initial beliefs about the state of the fabric.
 
-\begin{formalbox}[Definition 5: The Wave Generative Model]
-\label{def:wave_gm}
-A Process Wave $w$ instantiates a generative model $\bp_w(\bo, \bs)$ with components:
-\begin{align}
-\mathbf{A}_w &: \bp_w(\bo|\bs) \quad \text{--- the Wave's query template (what patterns it expects to observe)} \label{eq:a_wave} \\
-\mathbf{B}_w &: \bp_w(\bs_{t+1}|\bs_t, \ba_t) \quad \text{--- transition beliefs (how the fabric state evolves under the Wave's actions)} \label{eq:b_wave} \\
-\mathbf{C}_w &: \ln \bp_w(\bo) \quad \text{--- preferences (what the Wave aims to see after processing)} \label{eq:c_wave} \\
-\mathbf{D}_w &: \bp_w(\bs_0) \quad \text{--- priors (the Wave's initial beliefs about the fabric state)} \label{eq:d_wave}
-\end{align}
+Within this formulation, a Process Wave engages in a perception–action cycle over the fabric. During perception, the Wave queries the system via the unified API, receiving observations $\bo_t$ and updating its beliefs by minimizing variational free energy, $\bq_w(\bs_t) \leftarrow \arg\min_{\bq} \mathcal{F}_w(\bq, \bo_t)$. It then evaluates candidate actions in terms of their expected free energy:
+\begin{equation}
+G_w(\bpi, \tau) = \underbrace{-\E_{\tilde{\bq}_w}\!\left[\ln \bp_w(\bo_\tau)\right]}_{\text{Pragmatic}} + \underbrace{\E_{\tilde{\bq}_w}\!\left[\mathcal{H}\!\left[\bp_w(\bo_\tau|\bs_\tau)\right]\right]}_{\text{Epistemic}}
+\end{equation}
+balancing the drive to achieve preferred outcomes with the reduction of uncertainty. Action is then realized by asserting enrichments onto the fabric—creating new Signs, Associations, and Context links—while leaving a fingerprint that records provenance and enables coordination with other Waves.
 
-The Wave's perception--action cycle proceeds as:
-\begin{enumerate}[nosep]
-    \item \textbf{Perception}: The Wave queries the fabric via the unified API, receiving observations $\bo_t$. It updates its beliefs: $\bq_w(\bs_t) \leftarrow \arg\min_{\bq} \mathcal{F}_w(\bq, \bo_t)$
-    \item \textbf{Policy evaluation}: The Wave evaluates candidate actions by their expected free energy:
-    \begin{equation}
-    G_w(\bpi, \tau) = \underbrace{-\E_{\tilde{\bq}_w}\!\left[\ln \bp_w(\bo_\tau)\right]}_{\text{Pragmatic}} + \underbrace{\E_{\tilde{\bq}_w}\!\left[\mathcal{H}\!\left[\bp_w(\bo_\tau|\bs_\tau)\right]\right]}_{\text{Epistemic}}
-    \end{equation}
-    \item \textbf{Action}: The Wave asserts enrichments (Signs, Associations, Context) onto the fabric and leaves its fingerprint.
-\end{enumerate}
-\end{formalbox}
+In this sense, each Process Wave operates as an active inference agent embedded within the semiotic fabric, continuously updating its beliefs and acting to shape the informational structure of the system.
 
-\paragraph{Fingerprints as Non-Markovian Memory.} When a Wave leaves its fingerprint on a processed element, it creates a historical record that subsequent Waves can condition on. This transforms the fabric from a Markovian state space (where only the current state matters) into a non-Markovian one (where the processing history shapes future dynamics). As \citet{albarracin2025nonmarkovian} argue, this non-Markovianity is essential for meaning: the interpretation of a Sign depends not just on its current state but on its provenance --- the chain of processes that created and enriched it.
+\paragraph{Current Waves vs.\ Active Inference Waves.} It is important to distinguish the formal characterization from the current implementation. Today's SemApp Process Waves are developer-configured, rule-based processors. For example, the Artifact Standard Detection (ASD) Wave uses a heuristic priority chain (magic bytes $\to$ file extension $\to$ parse attempt) to classify incoming files. Similarly, entity resolution and disambiguation Waves apply deterministic matching rules. The active inference formalization developed above shows how \emph{future} Waves could be designed with explicit generative models, Bayesian belief updating, and EFE-based action selection. The computational demonstration in Section~\ref{sec:simulation} directly compares the two approaches, showing that active inference Waves outperform their rule-based counterparts precisely on the ambiguous cases where rigid heuristics fail, while matching performance on clear-cut cases. This distinction is not a limitation of the formal mapping; rather, it reflects the fact that SemApp's architecture is already \emph{compatible} with active inference, and the framework provides a principled path to more adaptive Wave designs.
+
+When a Wave leaves its fingerprint on a processed element, it creates a historical record that subsequent Waves can condition on. This transforms the fabric from a Markovian state space (where only the current state matters) into a non-Markovian one (where the processing history shapes future dynamics). As \citet{albarracin2025nonmarkovian} argue, this non-Markovianity is essential for meaning. The interpretation of a Sign depends not just on its current state but on its provenance, the chain of processes that created and enriched it.
 
 In active inference terms, fingerprints extend the temporal depth of the generative model. A Wave with access to fingerprints can condition its beliefs on processing history, implementing the retention and protention that \citet{albarracin2025nonmarkovian} identify as necessary for phenomenological meaning-making.
 
@@ -507,18 +426,15 @@ In active inference terms, fingerprints extend the temporal depth of the generat
 \subsection{The Network Effect as Shared Markov Blanket Dynamics}
 \label{sec:network}
 
-The most powerful property of SemApp's PWF is the network effect: because all enrichments are immediately available to all Waves, each Wave's actions change the observations available to every other Wave.
+A key property of SemApp’s Process Wave Framework is the emergence of a network effect. All enrichments are written directly to the shared fabric and immediately made available, and thus the actions of any given Wave alter the observations available to all others. In this sense, Waves do not operate independently, but become coupled through the semiotic environment they collectively construct.
 
-\begin{formalbox}[Proposition 2: Shared Blanket Dynamics]
-\label{prop:shared}
-When multiple Waves $w_1, \ldots, w_n$ operate on the same region of the fabric, they share a Markov blanket: their individual generative models become coupled through the shared Signs they read and write. Formally, let $\mathcal{S}_{\text{shared}} \subset \mathcal{X}_2$ be the set of Signs that multiple Waves access. Then:
+This coupling can be understood in terms of a shared Markov blanket. When multiple Waves $w_1, \ldots, w_n$ operate over the same region of the fabric, they interact through a common subset of Signs, denoted $\mathcal{S}_{\text{shared}} \subset \mathcal{X}_2$. These shared Signs mediate dependencies between the Waves, such that the observations available to a given Wave $w_i$ depend not only on the state of the fabric, but also on the actions of other Waves:
 \begin{equation}
-\bp(o_{w_i} | \bs_{\text{shared}}, \ba_{w_j \neq i}) \neq \bp(o_{w_i} | \bs_{\text{shared}})
+\bp(o_{w_i} \mid \bs_{\text{shared}}, \ba_{w_j \neq i}) \neq \bp(o_{w_i} \mid \bs_{\text{shared}})
 \end{equation}
-The observations available to Wave $w_i$ depend on the actions of other Waves $w_j$. This coupling creates an implicit communication channel: Waves coordinate through the shared semiotic environment without direct peer-to-peer messaging.
-\end{formalbox}
+As a result, each Wave’s perception is shaped by the interventions of others, and their generative models become implicitly coupled through the evolving structure of the fabric.
 
-This is precisely the mechanism of \emph{stigmergic coordination} --- indirect coordination through environment modification, as in ant pheromone trails. In the active inference framework, stigmergy corresponds to shared Markov blankets: agents whose blankets overlap (because they share environmental states) implicitly share portions of their generative models \citep{albarracin2022epistemic}.
+This mechanism gives rise to stigmergic coordination, in which agents coordinate indirectly by modifying a shared environment, rather than through explicit communication. In classical examples such as ant pheromone trails, environmental traces guide collective behaviour. Here, the shared semiotic fabric plays an analogous role. Waves leave structured traces in the form of Signs and relations, which in turn influence the inferences and actions of other Waves. From the perspective of active inference, this corresponds to overlapping Markov blankets, where agents that share environmental states effectively share portions of their generative models \citep{albarracin2022epistemic}.
 
 \paragraph{DEEP Decomposition for SemApp.} Table~\ref{tab:deep} maps the DEEP value decomposition onto concrete SemApp operations.
 
@@ -543,76 +459,68 @@ Preferential & Prior preferences over observations & Domain model conformance, o
 
 
 % ============================================================
-% 4. F_MATERIAL
+% 4. FABRIC-LEVEL FREE ENERGY
 % ============================================================
-\section{$\mathcal{F}_{\text{material}}$: The Fabric as Material Cognitive Substrate}
+\section{Fabric-Level Variational Inference and Embedded Normativity}
 \label{sec:fmaterial}
 
 \subsection{Embedded Normativity in Computational Infrastructure}
 
-\citet{guenincarlut2023embedded} argue that normativity --- the prescriptive structure that shapes what agents should do --- is not merely represented in agents' minds but is \emph{embedded} in the material environment. Tools, institutions, and data structures carry normative content that constrains inference and action for all agents that engage with them.
+\citet{guenincarlut2023embedded} argue that normativity---the prescriptive structure that shapes what agents should do---is not confined to internal representations, but is embedded in the material environment. Tools, institutions, and data structures carry normative content that constrains inference and action for any agent interacting with them.
 
-SemApp's fabric embeds normativity through multiple mechanisms:
-\begin{itemize}[nosep]
-    \item \textbf{Classification labels}: Every SRF element carries a security classification that determines who can discover and access it. This is not merely access control --- it is a deontic prior that constrains the hypothesis space for every query.
-    \item \textbf{Domain models}: The ontologies in Layer 3 define what Concepts are available for Sign creation, shaping the space of possible meanings. An analyst working within a given domain model can only ``think'' in terms of that model's categories --- until cross-domain links reveal alternative framings.
-    \item \textbf{Provenance (Perceivers)}: The record of who created each element carries implicit trust information, functioning as a precision weight on the corresponding beliefs.
-    \item \textbf{Label flooring}: The policy of retaining the lowest classification when a Sign is asserted with different classifications implements a normative prior toward openness --- ensuring data is not over-classified.
-\end{itemize}
+In SemApp, this normativity is embedded directly within the fabric through several interlocking mechanisms. Classification labels, attached to every SRF element, determine who can discover and access data; beyond simple access control, they function as deontic priors that constrain the hypothesis space available to any query. Domain models in Layer~3 further shape normativity by defining the Concepts available for Sign creation, effectively delimiting the space of possible meanings. Within a given domain model, an analyst's inferences are structured by its categories, until alternative framings are introduced through cross-domain links.
 
-Under the extended cognition framework \citep{veissiere2020thinking}, these embedded norms make the fabric a constitutive part of the organizational cognitive system --- not a tool that minds use, but a substrate through which minds think.
+Normative structure is also carried by provenance. The Perceiver associated with each element records its origin, implicitly encoding trust and functioning as a precision weighting over beliefs derived from that element. In addition, policies such as label flooring---where the lowest classification is retained when conflicting classifications are present---introduce systematic biases toward openness, acting as a normative constraint on how information is propagated and shared.
 
-\subsection{The Material Free Energy}
+From the perspective of extended cognition \citep{veissiere2020thinking}, these mechanisms imply that the fabric is not merely a passive repository or tool, but a constitutive component of the organizational cognitive system. Norms are not only represented by agents; they are enacted and stabilized within the environment itself, shaping how agents perceive, infer, and act.
 
-Drawing on \citet{albarracin2023archaeological}, who formalize how material configurations can minimize variational free energy, we define the material free energy of the fabric as a whole.
+\subsection{The Fabric-Level Generative Model}
 
-\begin{formalbox}[Definition 6: Material Free Energy]
-\label{def:f_material}
-Let $\mathcal{O} = \{o_1, \ldots, o_N\}$ denote the accumulated Artifact observations on the fabric, $\mathcal{S} = \{\sigma_1, \ldots, \sigma_M\}$ the current set of Signs, and $\mathcal{M}$ the set of domain models. The \textbf{material free energy} of the fabric is:
+The existence of a Markov blanket at the level of the fabric implies that the system can be described as maintaining a generative model over its observations and hidden states. We now make this model explicit and show how the fabric’s variational free energy decomposes into contributions from individual Signs.
+
+At the fabric level, observations $\bo_{\text{fabric}}$ correspond to the accumulated Artifacts $\mathcal{O} = \{o_1, \ldots, o_N\}$, that is, the raw data ingested into Layer~1. The hidden states $\bs_{\text{fabric}}$ correspond to the underlying real-world entities, events, and relationships that this data reflects. The likelihood mapping $\bp(\bo_{\text{fabric}} \mid \bs_{\text{fabric}})$ captures how these latent states give rise to observable data, and is implemented implicitly through the Sign extraction process. The prior $\bp(\bs_{\text{fabric}})$ is given by the domain models in Layer~3, which encode expectations about what entities and relations exist.
+
+The approximate posterior $\bq_{\text{fabric}}(\bs)$ is realized by the Sign store in Layer~2: the totality of Concept assignments across all Signs constitutes the system’s current belief state. Actions at the fabric level correspond to Wave processing, which asserts enrichments, associations, and reifications onto the fabric. Preferences are expressed through mission objectives, data quality constraints, and conformance to domain models.
+
+Under this interpretation, the fabric’s variational free energy takes the standard form:
 \begin{equation}
-\label{eq:fmaterial}
-\mathcal{F}_{\text{material}} = \sum_{\sigma \in \mathcal{S}} \mathcal{F}_\sigma + \lambda \cdot \mathcal{C}(\mathcal{S}, \mathcal{M})
+\label{eq:f_fabric_def}
+\mathcal{F}_{\text{fabric}} = \KL\!\left[\bq_{\text{fabric}}(\bs) \,\|\, \bp(\bs \mid \bo_{\text{fabric}})\right] - \ln \bp(\bo_{\text{fabric}})
 \end{equation}
-where $\mathcal{F}_\sigma$ is the semiotic free energy of Sign $\sigma$ (Equation~\ref{eq:semiotic_fe}), and $\mathcal{C}(\mathcal{S}, \mathcal{M})$ is a complexity term measuring the divergence of the fabric's total belief state from the domain model priors:
+
+\subsection{Mean-Field Decomposition}
+\label{cor:f_fabric}
+
+To make this expression tractable, we introduce three explicit assumptions. First, we adopt a \emph{mean-field posterior} in which the fabric's belief state factorizes across Signs as independent beliefs about distinct referents:
+\begin{equation}
+\bq_{\text{fabric}}(\bs) \approx \prod_{\sigma \in \mathcal{S}} \bq_\sigma(s_\sigma)
+\end{equation}
+Second, we assume a \emph{factorized likelihood}: each Artifact $o_\sigma$ depends only on the world state $s_\sigma$ that generated it, so that $\bp(\bo_{\text{fabric}} | \bs_{\text{fabric}}) = \prod_\sigma \bp(o_\sigma | s_\sigma)$. Third, we assume a \emph{factorized prior}: domain model expectations decompose as $\bp(\bs_{\text{fabric}}) = \prod_\sigma \bp_{\mathcal{M}}(s_\sigma)$.
+
+Under these assumptions, the fabric-level VFE (Equation~\ref{eq:f_fabric_def}) expands as follows. Writing $\mathcal{F}_{\text{fabric}} = \E_{\bq}[\ln \bq(\bs) - \ln \bp(\bo, \bs)]$ and substituting the factorized forms:
+\begin{align}
+\mathcal{F}_{\text{fabric}}
+&= \E_{\bq}\!\left[\sum_\sigma \ln \bq_\sigma(s_\sigma) - \sum_\sigma \ln \bp(o_\sigma | s_\sigma) - \sum_\sigma \ln \bp_{\mathcal{M}}(s_\sigma)\right] \nonumber\\
+&= \sum_{\sigma \in \mathcal{S}} \E_{\bq_\sigma}\!\left[\ln \bq_\sigma(s_\sigma) - \ln \bp(o_\sigma, s_\sigma)\right]
+\label{eq:fmaterial}
+\end{align}
+where $\bp(o_\sigma, s_\sigma) = \bp(o_\sigma | s_\sigma)\bp_{\mathcal{M}}(s_\sigma)$. Each summand is exactly the semiotic free energy of Sign $\sigma$ (Equation~\ref{eq:semiotic_fe}), giving:
 \begin{equation}
 \label{eq:complexity}
-\mathcal{C}(\mathcal{S}, \mathcal{M}) = \sum_{\sigma \in \mathcal{S}} \KL\!\left[\bq_\sigma(s) \,\|\, \bp_{\mathcal{M}}(s)\right]
+\mathcal{F}_{\text{fabric}} = \sum_{\sigma \in \mathcal{S}} \mathcal{F}_\sigma
 \end{equation}
-The parameter $\lambda > 0$ weights the complexity penalty relative to accuracy. $\mathcal{F}_{\text{material}}$ measures how well the fabric's Sign store explains the accumulated observations while remaining parsimonious with respect to the domain models.
-\end{formalbox}
 
-\begin{formalbox}[Proposition 3: Monotonic Decrease of $\mathcal{F}_{\text{material}}$]
+This result is not a novel quantity but the standard VFE at the fabric level of the nested Markov blanket hierarchy, decomposed via the mean-field approximation. The three assumptions above are idealizations. In practice, domain models introduce correlations between signs through shared ontological structure, and Associations between Signs create observation dependencies that violate the factorized likelihood assumption. The departure from full factorization contributes coupling terms that are neglected under this approximation. The decomposition is therefore exact only in the fully factorized regime; it should be understood as a useful tractable bound rather than an identity.
+
 \label{prop:monotone}
-Under the following conditions:
-\begin{enumerate}[nosep]
-    \item Process Waves implement variational inference: each Wave's action reduces $\mathcal{F}_\sigma$ for the Signs it processes
-    \item Domain models are consistent: $\bp_{\mathcal{M}}(s)$ does not change adversarially during processing
-    \item Data integrity is maintained: no Sign corruption or unauthorized modification
-\end{enumerate}
-the material free energy $\mathcal{F}_{\text{material}}$ is monotonically non-increasing over Wave processing epochs:
+Under typical operating conditions, the dynamics of Process Waves tend to drive this quantity downward over time. Each Wave processing epoch may refine existing Signs by improving their Concept assignments, introduce new Signs that better account for observed data, or assert relations that increase coherence across the fabric. These operations reduce either the semiotic free energy term or the complexity term. Provided that domain models remain stable and data integrity is preserved, the resulting trajectory of $\mathcal{F}_{\text{fabric}}$ is expected to be non-increasing across processing epochs:
 \begin{equation}
-\mathcal{F}_{\text{material}}^{(t+1)} \leq \mathcal{F}_{\text{material}}^{(t)}
 \label{eq:monotone_decrease}
+\mathcal{F}_{\text{fabric}}^{(t+1)} \leq \mathcal{F}_{\text{fabric}}^{(t)}
 \end{equation}
-\end{formalbox}
+Fingerprinting mechanisms prevent redundant re-processing, reducing the risk of oscillatory updates.
 
-\begin{proof}[Proof sketch]
-Each Wave processing epoch either: (a) improves a Sign's Concept assignment, reducing $\mathcal{F}_\sigma$; (b) creates a new Sign that better explains an Artifact observation, reducing the total semiotic free energy; or (c) asserts an Association that increases coherence between Signs, reducing the complexity term by aligning the fabric's beliefs with domain model expectations. Under the three conditions, no processing epoch increases $\mathcal{F}_{\text{material}}$. The Waves' fingerprint mechanism prevents re-processing, ensuring that each Sign is processed at most once per Wave, avoiding oscillation. \qed
-\end{proof}
-
-\begin{opbox}[Operational Implication]
-$\mathcal{F}_{\text{material}}$ provides a principled, scalar metric for the ``cognitive health'' of the fabric. A decreasing $\mathcal{F}_{\text{material}}$ means the fabric is getting smarter --- its representations are becoming more accurate and parsimonious. A plateau indicates saturation; a sudden increase signals data corruption, adversarial injection, or domain model inconsistency. Monitoring $\mathcal{F}_{\text{material}}$ in real time would give operators a dashboard-level view of the fabric's sense-making capacity.
-\end{opbox}
-
-
-\subsection{Cognitive Archaeology of Digital Infrastructure}
-
-The fabric's fingerprint and provenance mechanisms create what we term the \emph{cognitive archaeology} of the data system. Just as physical archaeological sites preserve layers of human activity and meaning-making \citep{albarracin2023archaeological}, the fabric preserves layers of enrichment --- each Wave's fingerprints recording what was processed, when, and by what process.
-
-This enrichment history constitutes a \emph{narrative} in the sense of \citet{bouizegarene2023narrative}: a temporally extended structure that encodes not just what is known, but how it came to be known. Under active inference, narratives are generative models for predicting future states over multiple timescales. The fabric's enrichment history enables exactly this: by examining the provenance chain, subsequent Waves (or human analysts) can predict what enrichments remain to be made, what data quality issues may arise, and what cross-domain connections are likely to be discovered.
-
-This is not merely an audit mechanism. It is the fabric's \emph{memory} --- the non-Markovian structure that \citet{albarracin2025nonmarkovian} argue is necessary for genuine meaning-making. Without this temporal depth, the fabric would be a Markovian state machine, capable of processing but not of understanding.
-
+From an operational perspective, $\mathcal{F}_{\text{fabric}}$ provides a scalar measure of the fabric’s ``cognitive health''. Decreases indicate that representations are becoming more accurate and coherent, while plateaus suggest saturation. Conversely, increases may signal data corruption, adversarial inputs, or inconsistencies in domain models. Monitoring this quantity in real time would therefore provide a principled, system-level indicator of the fabric’s sense-making capacity.
 
 % ============================================================
 % 5. COMPUTATIONAL DEMONSTRATION
@@ -620,149 +528,166 @@ This is not merely an audit mechanism. It is the fabric's \emph{memory} --- the 
 \section{Computational Demonstration}
 \label{sec:simulation}
 
-To validate the formal mapping developed in Sections~\ref{sec:formal}--\ref{sec:fmaterial}, we implement a computational demonstration using a self-contained discrete active inference engine built on \texttt{numpy}, following the formalism of \citet{parr2022active}. We simulate active inference agents (Process Waves) operating on a simplified semiotic fabric and demonstrate three key properties: epistemic foraging, multi-agent cooperation, and multi-scale free energy minimization. The complete simulation code is available in the supplementary materials.
+To validate the formal mapping developed in Sections~\ref{sec:formal}--\ref{sec:fmaterial}, we implement a computational demonstration using discrete active inference following the generative model specification of \texttt{pymdp} \citep{heins2022pymdp}. Rather than simulating Waves on an abstract grid, we ground each experiment in a concrete SemApp operation: Artifact Standard Detection (format-level), Sign disambiguation (content-level), cross-domain entity resolution (relationship-level), and multi-scale free energy minimization (fabric-level). Each experiment implements a Wave as a discrete active inference agent with Bayesian state inference via variational mean-field coordinate ascent, Expected Free Energy (EFE) policy evaluation with pragmatic and epistemic terms, and softmax action selection. The complete simulation code is available in the supplementary materials.
 
-\subsection{Simulation Design}
+\subsection{Simulation Design Overview}
 
-We model a semiotic fabric as a $5 \times 5$ grid of Sign-locations (25 cells), where each cell can be in one of three semantic states: \texttt{unprocessed}, \texttt{partial}, or \texttt{enriched}. The true domain context is one of three possible domain models (analogous to GEOINT, SIGINT, OSINT), unknown to the Waves a priori. Process Waves navigate the fabric, observe local and relational signals, and take enrichment actions to reduce the fabric's free energy.
+The four experiments form a progression from the simplest SemApp operation to the full cognitive substrate claim:
 
-\subsection{Generative Model Specification}
-
-Each Wave maintains a factorized generative model comprising per-cell semantic beliefs $q(\text{sem}_i)$ over the three enrichment states, and per-cell domain beliefs $q(\text{dom}_i)$ over the three possible domain contexts. Domain beliefs are updated locally: when a Wave visits cell $i$ and receives a domain cue, it updates $q(\text{dom}_i)$ via tempered Bayesian inference ($0.3 \cdot \ell + 0.7 \cdot \text{uniform}$) and gently propagates domain knowledge to neighboring cells. This per-cell structure ensures that the Wave's predicted observations---and hence its policy evaluation---are position-dependent, enabling spatially differentiated behavior.
-
-\paragraph{Observation modalities.}
-\begin{itemize}[nosep]
-    \item \textbf{Modality 0}: Self-location (25 outcomes, perfect observation)
-    \item \textbf{Modality 1}: Local semantic signal (4 outcomes: none, hint, match, contradiction), governed by a likelihood matrix $\mathbf{A}_{\text{sem}}$ mapping semantic states to observation probabilities
-    \item \textbf{Modality 2}: Neighbor Association signal (3 outcomes: none, consistent, inconsistent), reflecting the enrichment status of adjacent cells
-    \item \textbf{Modality 3}: Domain cue (4 outcomes: 3 domain indicators + ambiguous), with precision $\kappa \approx 0.55$ and tempered belief updates to model domain expertise commitment
-\end{itemize}
-
-\paragraph{Actions.} The Wave selects from 10 combined actions: 5 movement options (UP, DOWN, LEFT, RIGHT, STAY) $\times$ 2 enrichment options (OBSERVE, ENRICH). Enrichment transitions the cell's semantic state: unprocessed $\to$ partial $\to$ enriched, with success probability modulated by domain model accuracy: $p_{\text{success}} = 0.15 + 0.80 \cdot q(\text{dom}_{\text{true}})$. This captures the SemApp principle that correct domain models are essential for effective data enrichment.
-
-\paragraph{Policy evaluation.} The Wave evaluates two-step policies $\pi = (a_1, a_2)$ by computing expected free energy (EFE) following \citet{parr2022active}:
-\begin{equation}
-    G(\pi) = \sum_{\tau=1}^{2} \left[ \underbrace{-\sum_m \mathbf{q}(\mathbf{o}_{m,\tau})^\top \mathbf{C}_m}_{\text{pragmatic value}} + \underbrace{\sum_m \left[ H[\mathbf{q}(\mathbf{o}_{m,\tau})] - \E_{q(s_\tau)}[H[P(\mathbf{o}_m | s_\tau)]] \right]}_{\text{epistemic value (information gain)}} \right]
-\end{equation}
-where predicted states at each step are propagated through the transition model: $q(s_\tau) = \mathbf{B}(a_\tau) \, q(s_{\tau-1})$, and predicted observations follow from the likelihood: $q(o_{m,\tau}) = \mathbf{A}_m \, q(s_\tau)$. With 10 combined actions, this yields 100 two-step policies. Log-preferences are set to $C_{\text{sem}}[\text{partial}] = 0.5$, $C_{\text{sem}}[\text{contradiction}] = -1.0$; enriched cells carry zero preference, preventing exploitation traps. Action selection marginalizes over the second action: $\pi(a_1) = \sum_{a_2} \sigma(-\gamma \cdot G(a_1, a_2))$, with inverse temperature $\gamma = 8.0$. The two-step lookahead is critical: it allows the agent to see that moving to an unprocessed cell (step~1) followed by enrichment (step~2) yields high combined value---something invisible to single-step evaluation.
-
-\subsection{Multi-Agent Extension}
-
-For Experiment 2, we instantiate two Waves on the same fabric with a heterogeneous domain grid (GEOINT in the upper-left triangle, SIGINT in the lower-right) and a shared environment. When Wave~A enriches a cell, the environment state changes for Wave~B's subsequent observations---modeling the shared Markov blanket coupling of Definition~\ref{def:wave_gm}. We isolate the contribution of each generative model component through five conditions:
-\begin{enumerate}[nosep]
-    \item \textbf{Shared}: identical generative models (standard $\mathbf{A}$, neutral $\mathbf{C}$, uniform $\mathbf{D}$)---baseline redundancy
-    \item \textbf{Diff-A} (perception): Waves differ only in observation likelihood $\mathbf{A}_{\text{dom}}$---Wave~A has high precision ($\kappa = 0.7$) for GEOINT cues, Wave~B for SIGINT cues
-    \item \textbf{Diff-C} (preference): Waves differ only in log-preferences $\mathbf{C}_{\text{dom}}$---Wave~A prefers GEOINT observations, Wave~B prefers SIGINT observations
-    \item \textbf{Diff-D} (prior): Waves differ only in domain priors $\mathbf{D}_{\text{dom}}$---Wave~A has a strong GEOINT prior ($D = [0.8, 0.1, 0.1]$), Wave~B a strong SIGINT prior
-    \item \textbf{Adversarial}: Wave~A uses standard generative model; Wave~B has OSINT expertise, preferences, and priors that never match the grid's true domains---modeling complete generative model misspecification
+\begin{enumerate}[noitemsep]
+\item \textbf{Artifact Standard Detection}: A single Wave infers file formats from noisy cues --- directly modelling SemApp's ASD Wave.
+\item \textbf{Ambiguity Resolution}: A single Wave resolves polysemous Signs by progressively accumulating contextual evidence from Associations.
+\item \textbf{Multi-Wave Entity Resolution}: Three domain-specialized Waves cooperate through stigmergic coupling to resolve entities across GEOINT, SIGINT, and HUMINT domains.
+\item \textbf{Nested Free Energy}: Experiments 1--3 run on a single integrated fabric, tracking uncertainty at element, cluster, domain, and fabric levels.
 \end{enumerate}
-This design enables precise claims about how each component of the generative model drives collective sense-making: $\mathbf{A}$ affects enrichment \emph{quality} through perceptual expertise, $\mathbf{C}$ drives \emph{spatial specialization} through pragmatic preferences, and $\mathbf{D}$ modulates enrichment \emph{success} through prior belief accuracy.
 
-\subsection{Results}
+Each Wave instantiates a factorized generative model $\bp(\bo, \bs) = \prod_m \mathbf{A}_m(\bo_m | \bs) \prod_f \mathbf{D}_f(\bs_f)$ with action-conditioned transitions $\mathbf{B}_f(\bs_f' | \bs_f, \ba)$. State inference uses mean-field variational coordinate ascent:
+\begin{equation}
+\bq_f(\bs_f) \propto \exp\!\left\{ \E_{\bq_{\setminus f}}\!\left[\ln \bp(\bo, \bs)\right] \right\}
+\end{equation}
+Policy evaluation minimizes EFE:
+\begin{equation}
+G(\ba) = \underbrace{-\E_{\bq_{\ba}}\!\left[\ln \bp(\bo)\right]}_{\text{Pragmatic}} + \underbrace{\E_{\bq_{\ba}}\!\left[\mathcal{H}\!\left[\bp(\bo|\bs)\right]\right]}_{\text{Epistemic}}
+\end{equation}
+with action selection $\pi(\ba) = \sigma(-\gamma \cdot G(\ba))$, where $\gamma$ is the policy precision.
 
-\paragraph{Experiment 1: Single Wave Epistemic Foraging.} Figure~\ref{fig:exp1} shows a single Wave exploring the semiotic fabric over $T=100$ timesteps. With epistemic drive enabled (blue), the Wave systematically explores uncertain regions before enriching, resulting in faster convergence of $\mathcal{F}_{\text{material}}$ ($F = 0.718$ at $T=100$) compared to the pragmatic-only condition (red dashed, $F = 0.906$). The epistemic Wave enriches 11 cells versus only 4 for the pragmatic Wave---a $2.75\times$ improvement driven entirely by the information gain term of the EFE. The Wave's belief entropy over the domain context (panel~a) decreases as it accumulates evidence, demonstrating that the active inference agent performs genuine \emph{sense-making}---not merely data processing. The visit frequency heatmap (panel~c) shows systematic spatial coverage rather than random diffusion.
+\subsection{Experiment 1: Artifact Standard Detection}
+\label{sec:exp1}
 
-\paragraph{Experiment 2: Isolating Generative Model Components.} Figure~\ref{fig:exp2} compares five multi-Wave conditions on a heterogeneous domain grid. Each condition that differentiates Waves through a single generative model component outperforms the shared baseline ($F = 0.629$): Diff-D (prior differentiation, $F = 0.433$) achieves the lowest material free energy by enabling accurate enrichment in each Wave's prior-matching domain region; Diff-A (perceptual expertise, $F = 0.548$) improves enrichment quality through precise domain identification; Diff-C (preference differentiation, $F = 0.565$) drives spatial specialization as each Wave is drawn toward observations matching its preferred domain. The adversarial condition ($F = 0.692$) performs worst: Wave~B's OSINT-misspecified generative model---wrong observation model, wrong preferences, wrong priors---causes it to seek observations that never arise on the GEOINT/SIGINT grid, wasting half the processing capacity. This demonstrates that complementary coverage emerges from \emph{any} form of generative model heterogeneity, but through distinct mechanisms: $\mathbf{A}$ via perceptual accuracy, $\mathbf{C}$ via goal-directed spatial separation, $\mathbf{D}$ via prior-dependent enrichment success.
+\paragraph{Claim.} Even the simplest SemApp operation---classifying an incoming Artifact's file standard---benefits from active inference.
 
-\paragraph{Experiment 3: Nested Free Energy.} Figure~\ref{fig:exp3} shows free energy at three scales: individual Signs (panel~a), $2 \times 2$ regions (panel~b), and the full fabric (panel~c). All three levels show monotonically decreasing free energy ($\mathcal{F}_{\text{material}}$ decreases from $\log 3 \approx 1.10$ to $0.585$), validating Proposition~\ref{prop:monotone} and demonstrating multi-scale self-organization. The fabric-level $\mathcal{F}_{\text{material}}$ decreases smoothly, while Sign-level free energies show more variability---consistent with the theoretical prediction that higher-level blankets integrate and smooth the dynamics of lower-level components. Signs near the Wave's starting position (center) show earlier decreases, with the effect propagating outward as the Wave explores.
+\paragraph{Setup.} A single Wave receives Artifacts and must infer the file standard from noisy, potentially conflicting cues. The generative model has one hidden state factor with 6 states (NITF, JPEG2000, GeoTIFF, PDF, XML, UNKNOWN), four observation modalities (magic number match with 7 outcomes, file extension with 8 outcomes, parse attempt result with 5 outcomes, and file size range with 5 outcomes), and two actions (\textsc{classify} and \textsc{request\_parse}). The transition model is identity (the standard does not change). The key design is that \textsc{request\_parse} is expensive but informative: initially the parse modality returns only a null observation, and the informative parse result becomes available only after the agent explicitly requests it. This models SemApp's real-world trade-off between cheap heuristic cues and expensive deep parsing.
+
+We generate $N = 500$ artifacts with empirical priors over standards (NITF and GeoTIFF are most common in IC contexts), of which $\sim 30\%$ are \emph{ambiguous}: conflicting magic bytes and file extensions (e.g., GeoTIFF vs.\ plain TIFF sharing magic bytes, or files with wrong extensions). The active inference agent is compared against two baselines operating under the same information constraints: (1)~a \textbf{rule-based priority chain} (magic $\to$ extension $\to$ default), modelling SemApp's current ASD approach, and (2)~a \textbf{maximum-likelihood} classifier using the same likelihood matrices but without EFE-based action selection.
+
+\paragraph{Results.} Figure~\ref{fig:exp1} shows that the active inference Wave achieves $79.6\%$ overall accuracy, outperforming both the rule-based ($77.8\%$) and ML ($77.8\%$) baselines. The advantage is concentrated on ambiguous artifacts ($51.6\%$ vs.\ $49.7\%$ and $50.3\%$), where the agent's ability to selectively request parse operations provides additional evidence to resolve conflicts. On clear cases, all methods perform comparably ($\sim 91\%$). The confidence calibration plot (panel~c) shows that the active inference agent's posterior probabilities are better calibrated than the baselines, and the VFE distribution (panel~d) shows that incorrect classifications produce systematically higher free energy, confirming VFE as a reliable confidence signal.
+
+\subsection{Experiment 2: Ambiguity Resolution}
+\label{sec:exp2}
+
+\paragraph{Claim.} The SRF's relational structure enables active inference to perform genuine semiosis---resolving ambiguity through progressive context accumulation.
+
+\paragraph{Setup.} A single Wave resolves polysemous Signs (e.g., ``Mercury''---planet, element, deity, or car brand) by accumulating contextual evidence from Associations. The generative model has two hidden state factors: \texttt{true\_concept} (5 states: PLANET, ELEMENT, DEITY, CAR\_BRAND, OTHER) and \texttt{context\_domain} (4 states: ASTRONOMY, CHEMISTRY, MYTHOLOGY, AUTOMOTIVE). Three observation modalities provide evidence: \emph{signifier features} (6 outcomes, highly ambiguous for polysemous terms), \emph{association context} (6 outcomes, becoming more informative as more Associations are examined), and \emph{domain model cue} (5 outcomes). The two actions are \textsc{observe\_more} (examine another Association) and \textsc{commit} (assign a Concept).
+
+The association observation model's informativeness increases with each \textsc{observe\_more} action: at step~0, the clarity parameter is $0.05$; by step~5, it reaches $0.90$. This models the SemApp principle that relational context (Associations between Signs) provides richer evidence than the raw Signifier alone. We generate $N = 50$ Signs, of which 15 are genuinely polysemous (drawn from terms like ``Mercury,'' ``Mars,'' ``Saturn'' that appear in multiple concept-domain pairings). Baselines are a \textbf{naive ML assigner} (using signifier features alone, no context) and a \textbf{rule-based context matcher} (using domain cue with hardcoded concept mappings).
+
+\paragraph{Results.} Figure~\ref{fig:exp2} shows that context accumulation dramatically improves accuracy on polysemous Signs: the active inference agent achieves $88.0\%$ overall accuracy ($100\%$ on polysemous cases, $82.9\%$ on unambiguous), vastly outperforming both the naive ML baseline ($48.0\%$, using signifier features alone) and the rule-based context matcher ($58.0\%$). The key mechanism is that at each successive step, only the \emph{new} association context updates the agent's beliefs---signifier and domain cues, already incorporated in the empirical prior, are masked with uniform likelihoods to prevent evidence re-counting. The agent reaches confident ($\geq 70\%$ posterior) commitment after an average of only 3.9 inference steps (out of a maximum of 7), demonstrating that progressive Bayesian accumulation efficiently identifies when enough context has been gathered. The VFE trace (panel~c) shows that polysemous Signs start with higher free energy and converge more slowly, reflecting the greater inferential challenge they pose.
+
+\subsection{Experiment 3: Multi-Wave Entity Resolution}
+\label{sec:exp3}
+
+\paragraph{Claim.} The PWF's shared fabric enables cooperative intelligence through overlapping Markov blankets.
+
+\paragraph{Setup.} Three domain-specialized Waves (GEOINT, SIGINT, HUMINT) cooperate through a shared fabric of 30 Signs (10 per domain) to resolve references to 8 underlying entities. Five of these entities span multiple domains (cross-domain entities), creating the need for cross-domain inference. Each Wave has a factorized generative model with two hidden state factors (\texttt{entity\_id} with 8 states, \texttt{domain\_source} with 3 states) and four observation modalities (feature pattern, domain signature, cross-domain link, temporal correlation). The three actions are \textsc{observe}, \textsc{link\_same}, and \textsc{link\_different}.
+
+Domain-specialized Waves have enhanced perceptual precision ($\kappa = 0.60$) for entities in their own domain, domain-aligned priors, and preferences that favour their domain's observations. \emph{Stigmergic coupling} is the key mechanism: when Wave~A asserts an entity link, this becomes visible to Waves~B and~C as a cross-domain link observation, modelling the shared Markov blanket through which Waves communicate indirectly by modifying the fabric.
+
+We compare four conditions: (1)~\textbf{cooperative specialized}: 3 domain-expert Waves with stigmergic coupling; (2)~\textbf{single generalist}: 1 Wave with no domain expertise processing all domains; (3)~\textbf{isolated specialized}: 3 domain-expert Waves without coupling; and (4)~\textbf{homogeneous cooperative}: 3 identical non-expert Waves with coupling.
+
+\paragraph{Results.} Averaged over 20 replications to control for stochastic variation, Figure~\ref{fig:exp3} shows the predicted ordering: cooperative specialized Waves achieve $74.3\% \pm 1.7\%$ (SE) accuracy, significantly outperforming isolated specialized ($68.0\% \pm 1.7\%$), homogeneous cooperative ($59.0\% \pm 1.9\%$), and single generalist ($54.5\% \pm 2.3\%$). The cooperative advantage arises from \emph{belief propagation through links}: when two cross-domain Signs are confidently linked (both posterior maxima exceeding $0.55$ and agreeing on entity), the linked Sign's entity posterior is blended into the focal Sign's empirical prior, carrying entity-specific information that disambiguates within-domain feature collisions. The per-domain analysis (panel~d) reveals that cooperative Waves gain the most in SIGINT ($82\%$ vs.\ $72\%$ isolated), where cross-domain links from GEOINT and HUMINT resolve otherwise ambiguous entity patterns. The homogeneous cooperative condition performs worse than isolated despite coupling, demonstrating that stigmergic coordination amplifies the effect of generative model quality---poor models propagate noise through the shared fabric. The entity confusion matrix (panel~e) shows that cooperative specialized Waves are most confused between entities with similar feature patterns, consistent with the Bayesian structure of the inference.
+
+\subsection{Experiment 4: Nested Free Energy Minimization}
+\label{sec:exp4}
+
+\paragraph{Claim.} The fabric exhibits multi-scale self-organization---the signature of a cognitive system.
+
+\paragraph{Setup.} We run Experiments 1--3 sequentially on a single integrated fabric of 100 elements (20 Artifacts from Experiment~1, 50 Signs from Experiment~2, and 30 Signs from Experiment~3), tracking posterior entropy $H[\bq(\bs)]$ as a proxy for variational free energy at four scales: individual elements, entity/concept clusters, processing domains, and the full fabric. The key theoretical prediction is that fabric-level uncertainty should decrease monotonically even when individual elements show discrete jumps, because higher-level Markov blankets integrate and smooth lower-level dynamics.
+
+\paragraph{Results.} Figure~\ref{fig:exp4} confirms the multi-scale prediction. Fabric-level uncertainty decreases monotonically from $1.79$ to $0.38$ nats across the three processing phases. Individual elements (panel~a) show characteristic discrete jumps as they are processed---Artifacts drop sharply from $\log 6 \approx 1.79$ nats upon classification, Signs decrease progressively during disambiguation, and entity Signs are updated repeatedly during multi-Wave processing. At the cluster and domain levels (panel~b), the uncertainty curves are smoother, integrating the effects of multiple element-level transitions. The multi-scale comparison (panel~c) shows progressively smoother curves at higher aggregation levels, exactly as predicted by the nested Markov blanket structure: the fabric-level free energy is the mean-field average of element-level free energies, and the law of large numbers ensures that higher-level quantities are more regular than their lower-level components.
+
+\subsection{Results Synthesis}
+
+The four experiments form a coherent argument for the cognitive substrate thesis:
+
+\begin{enumerate}[noitemsep]
+\item \textbf{Format-level} (Experiment~1): Active inference outperforms rigid heuristics on ambiguous Artifacts, validating the Wave-as-agent formalization for the simplest SemApp operation.
+\item \textbf{Content-level} (Experiment~2): Progressive context accumulation through Associations enables genuine semiosis---resolving polysemous Signs through the same abductive inference process formalized in Section~\ref{sec:signs_vfe}.
+\item \textbf{Relationship-level} (Experiment~3): Domain-specialized Waves cooperating through belief propagation via stigmergic links outperform isolated, generalist, and homogeneous configurations ($74.3\%$ vs.\ $68.0\%$, $54.5\%$, $59.0\%$), validating the overlapping Markov blanket model of Section~\ref{sec:network}.
+\item \textbf{Fabric-level} (Experiment~4): The integrated fabric exhibits multi-scale self-organization, with monotonically decreasing fabric-level free energy emerging from discrete element-level dynamics, validating the nested blanket structure of Section~\ref{sec:nested}.
+\end{enumerate}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{figures/exp1_epistemic_foraging.pdf}
-\caption{Single Wave epistemic foraging on the semiotic fabric. (a)~Domain belief entropy decreases as the Wave accumulates evidence. (b)~Material free energy $\mathcal{F}_{\text{material}}$ converges faster with epistemic drive (two-step EFE). (c)~Visit frequency heatmap shows systematic exploration. (d)~Enrichment progress: epistemic Wave enriches $2.75\times$ more cells than the pragmatic-only baseline.}
+\includegraphics[width=\textwidth]{figures/exp1_asd.pdf}
+\caption{Experiment~1: Artifact Standard Detection ($N=500$ artifacts, $\sim 30\%$ ambiguous). (a)~Classification accuracy by method and ambiguity level: active inference outperforms rule-based and ML baselines, with the advantage concentrated on ambiguous artifacts. (b)~Belief evolution for an ambiguous GeoTIFF artifact showing posterior convergence across inference steps. (c)~Confidence calibration: active inference posteriors are better calibrated. (d)~VFE distribution: incorrect classifications produce systematically higher free energy.}
 \label{fig:exp1}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{figures/exp2_multiwave_cooperation.pdf}
-\caption{Isolating generative model component contributions to multi-Wave cooperation. Top row: (a)~Material free energy over time for five conditions isolating $\mathbf{A}$, $\mathbf{C}$, and $\mathbf{D}$ matrix differentiation. (b)~Enrichment progress. Bottom row: final enrichment state heatmaps for each condition, showing how different forms of generative model heterogeneity produce distinct spatial coverage patterns. Diff-D achieves lowest $\mathcal{F}_{\text{material}}$; adversarial performs worst due to complete model misspecification.}
+\includegraphics[width=\textwidth]{figures/exp2_disambiguation.pdf}
+\caption{Experiment~2: Ambiguity Resolution ($N=50$ Signs, 15 polysemous). (a)~Accuracy vs.\ context depth: active inference improves with progressive Association examination, outperforming baselines that lack context accumulation. (b)~Belief evolution for a polysemous term showing progressive disambiguation. (c)~VFE over inference steps: polysemous Signs start with higher VFE and converge more slowly. (d)~Accuracy by ambiguity level: all methods perform comparably on unambiguous Signs; active inference and ML dominate on polysemous cases.}
 \label{fig:exp2}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{figures/exp3_nested_free_energy.pdf}
-\caption{Nested free energy minimization across Markov blanket levels. (a)~Sign-level $F$ shows variability as individual cells are enriched. (b)~Regional ($2 \times 2$) free energy smooths individual fluctuations. (c)~Fabric-level $\mathcal{F}_{\text{material}}$ integrates across all scales, showing monotonic decrease.}
+\includegraphics[width=\textwidth]{figures/exp3_entity_resolution.pdf}
+\caption{Experiment~3: Multi-Wave Entity Resolution (30 Signs, 8 entities, 3 domains; $N=20$ replications). (a)~Fabric-level VFE over time for four conditions. (b)~Entity resolution accuracy with standard error bars: cooperative specialized Waves ($74.3\%$) significantly outperform isolated ($68.0\%$), homogeneous ($59.0\%$), and generalist ($54.5\%$). (c)~Cross-domain links asserted. (d)~Per-domain accuracy showing expertise and coupling advantages. (e)~Entity confusion matrix for the cooperative condition. (f)~Stigmergic coupling benefit (VFE difference between isolated and cooperative).}
 \label{fig:exp3}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{figures/exp4_nested_vfe.pdf}
+\caption{Experiment~4: Nested free energy minimization across 100 elements in an integrated fabric. (a)~Element-level uncertainty shows discrete jumps as individual Artifacts (blue), Signs (red), and entity Signs (green) are processed across three phases. (b)~Cluster and domain level uncertainty shows intermediate smoothing. (c)~Multi-scale comparison: fabric-level $\mathcal{F}_{\mathrm{fabric}}$ (red) decreases monotonically from $1.79$ to $0.38$ nats, progressively smoother at higher aggregation levels.}
+\label{fig:exp4}
 \end{figure}
 
 
 % ============================================================
 % 6. IMPLICATIONS AND APPLICATIONS
 % ============================================================
-\section{Implications and Applications}
+\section{Discussion}
 \label{sec:implications}
 
-\subsection{For Active Inference Theory}
+SemApp provides what may be the first operational, production-scale instantiation of nested Markov blankets in a computational system. While the theory of nested blankets has been developed extensively in the context of biological systems \citep{friston2019particular, kirchhoff2018markov, ramstead2023inner}, its application to engineered data systems is novel. The SemApp deployment at NGA, processing petabytes of data with hundreds of concurrent users over nearly a decade, constitutes an empirical test bed for nested blanket theory at a scale unprecedented in the literature.
 
-SemApp provides what may be the first operational, production-scale instantiation of nested Markov blankets in a computational system. While the theory of nested blankets has been developed extensively in the context of biological systems \citep{friston2019particular, kirchhoff2018markov, ramstead2023inner}, its application to engineered data systems is novel. The SemApp deployment at NGA --- processing petabytes of data with hundreds of concurrent users over nearly a decade --- constitutes an empirical test bed for nested blanket theory at a scale unprecedented in the literature.
+The Peirce--FEP isomorphism suggests that semiotics is a \emph{consequence} of the FEP applied to sign systems. If this isomorphism holds as strongly as the formal analysis suggests, then any system performing active inference over meaningful content is, by definition, performing semiosis. This has implications for the biosemiotics literature, which has independently argued that life is a semiotic process.
 
-The Peirce--FEP isomorphism (Proposition~\ref{prop:peirce}) suggests that semiotics is not merely an analogy for active inference but a \emph{consequence} of the FEP applied to sign systems. If this isomorphism holds as strongly as the formal analysis suggests, then any system performing active inference over meaningful content is, by definition, performing semiosis. This has implications for the biosemiotics literature, which has independently argued that life is a semiotic process.
+The multi-Wave dynamics of the PWF provide a test bed for the epistemic community theory of \citet{albarracin2022epistemic}. Experiment~3 demonstrates that Wave ecosystems exhibit the same dynamics as social epistemic communities: domain-specialized Waves with distinct generative models ($\mathbf{A}$, $\mathbf{C}$, $\mathbf{D}$) contribute complementary expertise to collective sense-making, while homogeneous configurations lacking epistemic diversity perform worst despite having access to the same stigmergic coupling mechanisms. Each generative model component contributes a distinct mechanism---perceptual precision ($\mathbf{A}$) determines domain expertise, preferences ($\mathbf{C}$) guide action selection toward informative observations, and priors ($\mathbf{D}$) encode domain-specific expectations---while misspecified models (the homogeneous condition) propagate noise through the shared fabric. This opens the possibility of engineering Wave ecosystems with designed epistemic properties.
 
-The multi-Wave dynamics of the PWF provide a test bed for the epistemic community theory of \citet{albarracin2022epistemic}. Experiment 2 demonstrates that Wave ecosystems exhibit the same dynamics as social epistemic communities: each generative model component ($\mathbf{A}$, $\mathbf{C}$, $\mathbf{D}$) contributes a distinct mechanism to collective sense-making---perceptual expertise, goal-directed spatial specialization, and prior-dependent enrichment success, respectively---while complete model misspecification (adversarial condition) degrades fabric quality. This opens the possibility of engineering Wave ecosystems with designed epistemic properties.
-
-We note the connection to the minimal sentience framework of \citet{hipolito2025beyond}, which proposes three conditions: active self-maintenance, historical adaptability, and autonomous agency. SemApp's fabric demonstrably satisfies the first two (self-maintenance through continuous processing and fault tolerance; historical adaptability through fingerprints and provenance). Whether it satisfies autonomous agency --- whether Wave processing constitutes genuine action initiation rather than triggered response --- is a theoretical question that merits further investigation.
 
 \subsection{For DoD/IC Data Architecture}
 
-The active inference framework provides predictive design principles for next-generation data architectures:
+Active Inference has useful predictive design principles for next-generation data architectures that can be articulated without reducing them to discrete design heuristics. First, the framework implies the importance of epistemic diversity. Heterogeneous ecosystems of Waves consistently outperform homogeneous configurations. This suggests that data architectures should be structured to encourage third-party Wave development and pluralistic modelling approaches, rather than concentrating processing within a small number of centralized pipelines.
 
-\begin{enumerate}[nosep]
-    \item \textbf{Epistemic diversity}: Theorem~\ref{thm:nested_blanket} and Experiment 2 predict that diverse Wave ecosystems outperform homogeneous ones. Data architectures should encourage third-party Wave development rather than centralizing processing in a small number of pipelines.
+Second, classification emerges as a structural requirement for maintaining Markov blanket integrity. Classification boundaries sustain the conditional independence assumptions that allow modular inference to proceed. Weakening these controls would therefore erode the very separability that enables scalable, distributed sense-making.
 
-    \item \textbf{Classification as blanket integrity}: Security classification is not overhead --- it is a necessary component of Markov blanket maintenance (Equation~\ref{eq:ci}). Weakening classification controls would compromise the conditional independence that enables modular processing.
+Third, provenance should be understood as a form of cognitive memory within the system. Fingerprints and Perceiver metadata instantiate the temporal depth required for non-Markovian inference. Systems that discard provenance effectively eliminate their own capacity for historical integration and thus become functionally amnesic.
 
-    \item \textbf{Provenance as cognitive memory}: Fingerprints and Perceiver metadata are not merely compliance mechanisms --- they provide the non-Markovian temporal depth necessary for genuine sense-making (Section~\ref{sec:waves}). Systems that discard provenance are amnesic.
+Fourth, the fabric-level variational free energy $\mathcal{F}_{\text{fabric}}$ is a useful scalar quantity for operational monitoring. Because it captures the alignment between observations, beliefs, and inferred structure, it can serve as a global health metric for the fabric. In practice, a real-time dashboard tracking $\mathcal{F}_{\text{fabric}}$ would offer operators direct visibility into the system's ongoing sense-making capacity.
 
-    \item \textbf{$\mathcal{F}_{\text{material}}$ as health metric}: The material free energy provides a principled, scalar metric for operational monitoring. A real-time $\mathcal{F}_{\text{material}}$ dashboard would give operators visibility into the fabric's sense-making capacity.
-
-    \item \textbf{Domain models as adaptive priors}: Layer 3 should be treated as a space of priors that can be updated through experience, not as a fixed schema. This aligns with SemApp's existing approach of making standardization optional rather than mandatory.
-\end{enumerate}
+Domain models in Layer 3 should be reconceptualised as adaptive priors rather than fixed schemas. Treating them as updateable belief structures allows the system to refine its inductive biases through experience, aligning with SemApp’s design philosophy of optional, rather than mandatory, standardisation.
 
 \subsection{Designing Explainable Semiotic AI}
 
-\citet{albarracin2023explainable} argue that active inference systems with explicit generative models are inherently explainable: every action can be traced to a belief, every belief to an observation, and every observation to a specific element of the generative model. Applied to SemApp, this means every Wave enrichment can be explained via its DEEP decomposition:
+\citet{albarracin2023explainable} argue that active inference, with its explicit generative models, is inherently explainable. Every action can be traced to a belief, every belief to an observation, and every observation to a specific element of the generative model. Applied to SemApp, this implies that every Wave enrichment can be rendered intelligible through its DEEP decomposition. An enrichment may be attributed to deontic factors when it arises because the classification policy mandates it, reflecting the normative constraints imposed on the system. It may instead be epistemic in nature when the enrichment serves to reduce uncertainty about the referent of a Sign, thereby improving the system’s inferential accuracy. In other cases, the enrichment is pragmatic, insofar as it contributes to bringing the fabric into closer alignment with the domain model, effectively guiding action toward goal-consistent states. Finally, an enrichment can be preferential when it reflects the expectations encoded in the domain model, such that a particular Concept is predicted for a given Signifier.
 
-\begin{itemize}[nosep]
-    \item ``This enrichment was made because the classification policy required it'' (Deontic)
-    \item ``This enrichment was made because it resolved uncertainty about the Sign's referent'' (Epistemic)
-    \item ``This enrichment was made because it moved the fabric closer to domain model conformance'' (Pragmatic)
-    \item ``This enrichment was made because the domain model predicts this Concept for this Signifier'' (Preferential)
-\end{itemize}
+When this decomposition is combined with fingerprint-based provenance and the complete enrichment history of the fabric, explainability emerges as an intrinsic property of the system. Rather than being retrofitted as a post-hoc interpretability layer, it is built directly into the architecture of active inference, ensuring that each transformation of the data can be traced, justified, and understood in terms of its underlying generative model.
 
-Combined with fingerprint provenance and the fabric's full enrichment history, this provides explainability by construction --- not as a post-hoc add-on but as an architectural property of active inference systems.
-
-
-% ============================================================
-% 7. DISCUSSION
-% ============================================================
-\section{Discussion}
 \label{sec:discussion}
 
 \subsection{Limitations}
 
-The formal mapping presented in this paper is \emph{structural}: we show that SemApp's architecture has the form of a nested Markov blanket system performing active inference. We do not claim that SemApp was designed with the FEP in mind (it was not), nor that its developers intended to implement active inference. Rather, we argue that the architecture converged on an FEP-consistent design because the FEP describes the necessary conditions for any system that maintains its organization while making sense of a complex environment. This convergent design is, if anything, stronger evidence for the framework's explanatory power than a design that deliberately instantiated FEP principles.
+The formal mapping presented in this paper is \emph{structural}. We show that SemApp's architecture has the form of a nested Markov blanket system performing active inference. We do not claim that SemApp was designed with the FEP in mind (it was not), nor that its developers intended to implement active inference. Rather, we argue that the architecture converged on an FEP-consistent design because the FEP describes the necessary conditions for any system that maintains its organization while making sense of a complex environment. This convergent design is, if anything, stronger evidence for the framework's explanatory power than a design that deliberately instantiated FEP principles.
 
-The pymdp simulation is a proof of concept, not a model of SemApp at operational scale. The $5 \times 5$ grid with 3 semantic states is many orders of magnitude smaller than SemApp's actual state space ($\sim 70$ PB of data across millions of Signs). Scaling the simulation to realistic dimensions would require approximate inference methods beyond the scope of this paper.
+The simulation is a proof of concept, not a model of SemApp at operational scale. Experiment~1's six file standards, Experiment~2's $5 \times 4 = 20$ joint states, and Experiment~3's $8 \times 3 = 24$ joint states are many orders of magnitude smaller than SemApp's actual state space ($\sim 70$ PB of data across millions of Signs). Scaling to realistic dimensions would require approximate inference methods (e.g., amortized variational inference, message passing on factor graphs) beyond the scope of this paper. Importantly, Experiment~1 directly models a real SemApp Wave---the Artifact Standard Detection pipeline---and its observation modalities (magic bytes, file extensions, parse results, file size) correspond to actual cues used in production. Experiments~2--4 are more stylized but remain grounded in real SemApp data types: Signs, Associations, Concepts, and domain models are all first-class entities in the SemApp architecture, and the polysemous terms, cross-domain entities, and stigmergic coupling mechanisms modelled in the simulation reflect genuine challenges faced by operational fabrics.
 
-The conditional independence claim in Theorem~\ref{thm:nested_blanket} holds at the architectural level (by design, Artifacts and domain models interact only through Signs), but could be violated in practice by side channels (e.g., file naming conventions that leak domain model information into Layer 1). A formal verification of blanket integrity in the running system is an open challenge.
+The conditional independence claim holds at the architectural level (by design, Artifacts and domain models interact only through Signs), but could be violated in practice by side channels (e.g., file naming conventions that leak domain model information into Layer 1). A formal verification of blanket integrity in the running system is an open challenge.
 
 \subsection{Future Directions}
 
-Several lines of future work emerge from this analysis:
+Several lines of future work follow naturally from this analysis and point toward both theoretical and practical extensions of the framework. A first direction concerns the online monitoring of fabric-level free energy, $\mathcal{F}_{\text{fabric}}$. Implementing real-time computation of this quantity would yield a principled operational metric for assessing the fabric's sense-making capacity as it evolves. Our simulation (Experiment~4) demonstrates that $\mathcal{F}_{\text{fabric}}$ is computable in a tractable discrete setting and that it decreases monotonically across processing phases; scaling to production settings necessitates the development of efficient approximation schemes that preserve interpretability while remaining computationally feasible.
 
-\begin{enumerate}[nosep]
-    \item \textbf{Online $\mathcal{F}_{\text{material}}$ monitoring}: Implementing a real-time computation of the fabric's material free energy would provide an operational metric for the fabric's sense-making capacity. This requires efficient approximation methods, since exact computation is intractable.
+A second direction reframes Wave design as an instance of generative model engineering. If Waves are properly understood as active inference agents, then specifying a Wave amounts to defining its underlying generative model. Within this perspective, the DEEP decomposition is a structured design language. Epistemic value determines what the Wave should seek in terms of uncertainty reduction, pragmatic value specifies what outcomes it should realise, and deontic value encodes the constraints under which it must operate. This reframing opens the door to systematic methodologies for constructing, comparing, and validating Waves.
 
-    \item \textbf{Wave design as generative model engineering}: If Waves are active inference agents, then designing Waves is designing generative models. The DEEP decomposition provides a principled framework for specifying what a Wave should seek (epistemic value), what it should achieve (pragmatic value), and what constraints it should respect (deontic value).
+A third avenue concerns multi-fabric federation. SemApp already enables distributed querying across instances, but under the present framework this capability can be interpreted more deeply as distributed active inference across organizational Markov blankets. We could thus analyse inter-agency information sharing, where each fabric maintains partial autonomy while participating in a larger inferential ecosystem.
 
-    \item \textbf{Multi-fabric federation as distributed active inference}: SemApp supports distributed query across instances. Under our framework, this corresponds to distributed active inference across organizational Markov blankets --- a formal model for inter-agency information sharing.
+A fourth line of work addresses adversarial robustness, which can be recast as the problem of defending Markov blanket integrity. From this perspective, data poisoning and adversarial injection are not merely anomalies but targeted disruptions of the conditional independencies that sustain coherent inference. The Free Energy Principle has a principled basis for detection and mitigation. Systematic increases in $\mathcal{F}_{\text{fabric}}$ can be interpreted as signals of blanket violation, thereby enabling early identification of compromised states.
 
-    \item \textbf{Adversarial robustness as blanket defense}: Data poisoning and adversarial injection can be understood as attacks on Markov blanket integrity. The FEP provides a principled framework for detecting and defending against such attacks: anomalous increases in $\mathcal{F}_{\text{material}}$ signal blanket violation.
+Finally, these directions connect directly to the broader vision of ecosystems of intelligence articulated by \citet{friston2022ecosystems}, in which natural and artificial agents are coupled through shared generative models. SemApp’s fabric, with its unified API and Wave abstraction, provides a concrete substrate for realising such ecosystems, enabling coordinated sense-making across heterogeneous agents while preserving modularity and local autonomy.
 
-    \item \textbf{Connection to the Ecosystem of Intelligence vision}: \citet{friston2022ecosystems} propose engineering ecosystems of natural and artificial intelligence through shared generative models. SemApp's fabric, with its unified API and Wave framework, provides a concrete substrate for such ecosystems.
-\end{enumerate}
 
 
 % ============================================================
@@ -771,19 +696,19 @@ Several lines of future work emerge from this analysis:
 \section{Conclusion}
 \label{sec:conclusion}
 
-We have argued that the SemApp semiotic data fabric is not merely a data platform but a cognitive substrate --- a system that satisfies the formal criteria for cognition under the Free Energy Principle. The argument rests on three pillars:
+We have argued that the SemApp semiotic data fabric is not merely a data platform but a cognitive substrate, a system that satisfies the formal criteria for cognition under the Free Energy Principle. The argument rests on three pillars:
 
-First, \textbf{semiosis is inference}. The Peirce--FEP isomorphism (Proposition~\ref{prop:peirce}, Theorem~\ref{thm:semiotic_fe}) establishes that Sign creation in SemApp --- binding Signifiers with Concepts --- is variational inference that minimizes semiotic free energy. The fabric does not merely store data; it \emph{interprets} it, generating meaning through the same formal process that defines cognition under the FEP.
+First, \textbf{semiosis is inference}. The Peirce--FEP correspondence (Section~\ref{sec:signs_vfe}) establishes that Sign creation in SemApp, binding Signifiers with Concepts, is variational inference that minimizes semiotic free energy. The fabric does not merely store data; it \emph{interprets} it, generating meaning through the same formal process that defines cognition under the FEP.
 
-Second, \textbf{the architecture is a nested Markov blanket system} (Theorem~\ref{thm:nested_blanket}). The three-layer architecture, with Artifacts as external states, Signs as blanket states, and domain models as internal states, satisfies the conditional independence requirements of the blanket partition. Each Sign has its own blanket nested within the layer blanket, nested within the fabric blanket --- the recursive structure that \citet{kirchhoff2018markov} identify as the hallmark of cognitive systems.
+Second, \textbf{the architecture is a nested Markov blanket system} (Section~\ref{sec:nested}). The three-layer architecture, with Artifacts as external states, Signs as blanket states, and domain models as internal states, satisfies the conditional independence requirements of the blanket partition. Each Sign has its own blanket nested within the layer blanket, nested within the fabric blanket, the recursive structure that \citet{kirchhoff2018markov} identify as the hallmark of cognitive systems.
 
-Third, \textbf{Process Waves are active inference agents} (Definition~\ref{def:wave_gm}) that coordinate through shared Markov blankets (Proposition~\ref{prop:shared}), creating the network effect that makes the fabric progressively more capable. The material free energy $\mathcal{F}_{\text{material}}$ (Definition~\ref{def:f_material}) provides a principled metric for this progressive sense-making, and its monotonic decrease (Proposition~\ref{prop:monotone}) under consistent processing constitutes the fabric's learning.
+Third, \textbf{Process Waves are active inference agents} that coordinate through shared Markov blankets (Section~\ref{sec:network}), creating the network effect that makes the fabric progressively more capable. The fabric-level variational free energy $\mathcal{F}_{\text{fabric}}$ (Section~\ref{sec:fmaterial}), derived from the fabric's generative model under a mean-field factorization, provides a principled metric for this progressive sense-making, and its tendency to decrease under consistent processing, validated by simulation, constitutes the fabric's learning.
 
-The computational demonstration validates this framework: a pymdp simulation shows that active inference agents on a semiotic grid exhibit epistemic foraging, cooperative dynamics, and multi-scale free energy minimization --- the signatures of a cognitive system.
+The computational demonstration validates this framework through four experiments of increasing scope: a single Wave outperforms rigid heuristics on ambiguous Artifact classification (Experiment~1), progressive context accumulation enables genuine semiosis---achieving $100\%$ accuracy on polysemous Signs versus $48\%$ for static maximum-likelihood (Experiment~2), domain-specialized Waves cooperating through belief propagation via stigmergic links outperform isolated, generalist, and homogeneous configurations at $74.3\%$ vs.\ $68.0\%$, $54.5\%$, and $59.0\%$ respectively (Experiment~3), and an integrated fabric of 100 elements exhibits monotonically decreasing free energy from $1.79$ to $0.38$ nats at the fabric level despite discrete jumps at the element level (Experiment~4)---the multi-scale self-organization that is the signature of a cognitive system.
 
-Nearly a decade of operational experience at NGA, processing tens of petabytes of data and supporting mission-critical intelligence operations, provides empirical validation at a scale unprecedented for nested Markov blanket theory. The framework not only explains why SemApp works but predicts how to extend it: through epistemic Wave diversity, adaptive domain models, and $\mathcal{F}_{\text{material}}$ monitoring.
+Nearly a decade of operational experience at NGA, processing tens of petabytes of data and supporting mission-critical intelligence operations, provides empirical validation at a scale unprecedented for nested Markov blanket theory. The framework not only explains why SemApp works but predicts how to extend it: through epistemic Wave diversity, adaptive domain models, and $\mathcal{F}_{\text{fabric}}$ monitoring.
 
-We believe this analysis opens a door to a new class of data architectures --- \emph{cognitive data fabrics} --- that are designed from first principles to make sense of the world. In the spirit of \citet{friston2022ecosystems}, such fabrics may form the substrate for ecosystems of intelligence in which humans, algorithms, and institutions coordinate through shared semiotic structures, achieving collective sense-making at the scale that the challenges of the 21st century demand.
+We believe this analysis opens a door to a new class of data architectures, \emph{cognitive data fabrics}, that are designed from first principles to make sense of the world. In the spirit of \citet{friston2022ecosystems}, such fabrics may form the substrate for ecosystems of intelligence in which humans, algorithms, and institutions coordinate through shared semiotic structures, achieving collective sense-making at the scale that the challenges of the 21st century demand.
 
 
 % ============================================================
@@ -792,6 +717,11 @@ We believe this analysis opens a door to a new class of data architectures --- \
 \bibliographystyle{apalike}
 
 \begin{thebibliography}{99}
+
+\bibitem{albarracin2025resilience}
+M.~Albarracin and D.~A.~R.~Sakthivadivel,
+``Resilience and adaptability in self-evidencing systems,''
+\textit{arXiv preprint arXiv:2506.06897}, 2025.
 
 \bibitem[Albarracin(2023)]{albarracin2023archaeological}
 Albarracin, M. (2023).
@@ -810,7 +740,7 @@ Albarracin, M. (2026).
 
 \bibitem[Albarracin \& Sakthivadivel(2025)]{albarracin2025nonmarkovian}
 Albarracin, M. \& Sakthivadivel, D.~A.~R. (2025).
-\newblock Non-{M}arkovian systems, phenomenology, and the challenges of capturing meaning and context --- {C}omment on {P}arr, {P}ezzulo, and {F}riston (2025).
+\newblock Non-{M}arkovian systems, phenomenology, and the challenges of capturing meaning and context, {C}omment on {P}arr, {P}ezzulo, and {F}riston (2025).
 \newblock Letter submitted to \emph{JSEDI}.
 
 \bibitem[Albarracin et~al.(2021)]{albarracin2021variational}
@@ -913,53 +843,55 @@ Yoakum-Stover, S. \& Eick, M.~A. (2025).
 \newblock The {SemApp} data fabric.
 \newblock \emph{Mission Focus White Paper}.
 
+
+
 \end{thebibliography}
 
 
 % ============================================================
 % APPENDICES
 % ============================================================
-\appendix
+% \appendix
 
-\section{Proof of the Nested Blanket Theorem}
-\label{app:proof}
+% \section{Proof of the Nested Blanket Theorem}
+% \label{app:proof}
 
-We provide the full proof of Theorem~\ref{thm:nested_blanket}.
+% We provide the full proof of Theorem~\ref{thm:nested_blanket}.
 
-\begin{proof}
-We must show that $\bp(\mathcal{X}_1, \mathcal{X}_3 | \mathcal{X}_2) = \bp(\mathcal{X}_1 | \mathcal{X}_2) \cdot \bp(\mathcal{X}_3 | \mathcal{X}_2)$; that is, Artifact states and domain model states are conditionally independent given Sign states.
+% \begin{proof}
+% We must show that $\bp(\mathcal{X}_1, \mathcal{X}_3 | \mathcal{X}_2) = \bp(\mathcal{X}_1 | \mathcal{X}_2) \cdot \bp(\mathcal{X}_3 | \mathcal{X}_2)$; that is, Artifact states and domain model states are conditionally independent given Sign states.
 
-\textbf{Step 1: Characterize information flow.} In the SemApp architecture, information flows as follows:
-\begin{itemize}[nosep]
-    \item Artifacts $\to$ Signs: via Ingest (creating Artifact records) and Digest Waves (extracting Signs from Artifact content, linked by Mentions)
-    \item Signs $\to$ Domain Models: via Layer 3 assertions (Signs instantiate Concepts defined in domain models)
-    \item Domain Models $\to$ Signs: via Concept definitions (domain models define the vocabulary of Concepts available for Sign creation)
-    \item Signs $\to$ Artifacts: via Reification and enrichment (Signs reference Artifacts through Mentions)
-\end{itemize}
+% \textbf{Step 1: Characterize information flow.} In the SemApp architecture, information flows as follows:
+% \begin{itemize}[nosep]
+%     \item Artifacts $\to$ Signs: via Ingest (creating Artifact records) and Digest Waves (extracting Signs from Artifact content, linked by Mentions)
+%     \item Signs $\to$ Domain Models: via Layer 3 assertions (Signs instantiate Concepts defined in domain models)
+%     \item Domain Models $\to$ Signs: via Concept definitions (domain models define the vocabulary of Concepts available for Sign creation)
+%     \item Signs $\to$ Artifacts: via Reification and enrichment (Signs reference Artifacts through Mentions)
+% \end{itemize}
 
-\textbf{Step 2: Verify no direct Artifact--Domain Model pathway.} By architectural specification:
-\begin{itemize}[nosep]
-    \item Artifacts contain no domain model references (they are raw files with metadata: address, size, type, classification)
-    \item Domain models contain no Artifact references (they define Concepts, predicates, and ontological relations abstractly)
-\end{itemize}
-Any correlation between an Artifact's content and a domain model's structure is mediated by the Signs extracted from that Artifact using that domain model's Concepts. Formally:
-\begin{equation}
-\bp(x_1 \in \mathcal{X}_1, x_3 \in \mathcal{X}_3) = \sum_{x_2 \in \mathcal{X}_2} \bp(x_1 | x_2) \cdot \bp(x_3 | x_2) \cdot \bp(x_2)
-\end{equation}
+% \textbf{Step 2: Verify no direct Artifact--Domain Model pathway.} By architectural specification:
+% \begin{itemize}[nosep]
+%     \item Artifacts contain no domain model references (they are raw files with metadata: address, size, type, classification)
+%     \item Domain models contain no Artifact references (they define Concepts, predicates, and ontological relations abstractly)
+% \end{itemize}
+% Any correlation between an Artifact's content and a domain model's structure is mediated by the Signs extracted from that Artifact using that domain model's Concepts. Formally:
+% \begin{equation}
+% \bp(x_1 \in \mathcal{X}_1, x_3 \in \mathcal{X}_3) = \sum_{x_2 \in \mathcal{X}_2} \bp(x_1 | x_2) \cdot \bp(x_3 | x_2) \cdot \bp(x_2)
+% \end{equation}
 
-\textbf{Step 3: Identify blanket decomposition.} Within Layer 2:
-\begin{itemize}[nosep]
-    \item Sensory states $\bs$: Signifiers and Mentions carry information \emph{from} the external world. A Signifier is a data value extracted from an Artifact; a Mention points back to the source. These states are influenced by external states (Artifacts) but do not directly influence them.
-    \item Active states $\ba$: Associations, Context links, and Reification impose structure \emph{on} the fabric. An Association asserts a relation visible to other Waves and applications. These states influence the external environment (by making the fabric more discoverable and useful) without being directly influenced by it.
-\end{itemize}
+% \textbf{Step 3: Identify blanket decomposition.} Within Layer 2:
+% \begin{itemize}[nosep]
+%     \item Sensory states $\bs$: Signifiers and Mentions carry information \emph{from} the external world. A Signifier is a data value extracted from an Artifact; a Mention points back to the source. These states are influenced by external states (Artifacts) but do not directly influence them.
+%     \item Active states $\ba$: Associations, Context links, and Reification impose structure \emph{on} the fabric. An Association asserts a relation visible to other Waves and applications. These states influence the external environment (by making the fabric more discoverable and useful) without being directly influenced by it.
+% \end{itemize}
 
-\textbf{Step 4: Verify conditional independence.} Given the Sign states (Layer 2):
-\begin{align}
-\bp(\text{Artifact content} | \text{Signs}, \text{Domain Models}) &= \bp(\text{Artifact content} | \text{Signs}) \\
-\bp(\text{Domain structure} | \text{Signs}, \text{Artifacts}) &= \bp(\text{Domain structure} | \text{Signs})
-\end{align}
-The first holds because knowing the Signs (which include all extracted information from the Artifact via Mentions) d-separates the Artifact content from the domain model. The second holds because knowing the Signs (which instantiate the domain model's Concepts) d-separates the domain model structure from the Artifact content. \qed
-\end{proof}
+% \textbf{Step 4: Verify conditional independence.} Given the Sign states (Layer 2):
+% \begin{align}
+% \bp(\text{Artifact content} | \text{Signs}, \text{Domain Models}) &= \bp(\text{Artifact content} | \text{Signs}) \\
+% \bp(\text{Domain structure} | \text{Signs}, \text{Artifacts}) &= \bp(\text{Domain structure} | \text{Signs})
+% \end{align}
+% The first holds because knowing the Signs (which include all extracted information from the Artifact via Mentions) d-separates the Artifact content from the domain model. The second holds because knowing the Signs (which instantiate the domain model's Concepts) d-separates the domain model structure from the Artifact content. \qed
+% \end{proof}
 
 
 \section{Glossary: SemApp--Active Inference Terminology Mapping}
@@ -974,7 +906,7 @@ The first holds because knowing the Signs (which include all extracted informati
 \midrule
 Artifact & Observation / sense data & $\bo$ \\
 Sign & Variational belief (interpretant) & $\bq_\sigma(s)$ \\
-Signifier & Sensory state & $\bs$ \\
+Signifier & Observation (sensory data) & $o_\sigma$ \\
 Concept & Internal state / posterior mode & $\bmu$ \\
 Association & Factor graph edge & $\bp(s_j | s_i, \text{pred})$ \\
 Reification & Hierarchical belief & $\bq^{(\ell+1)}$ \\
@@ -988,7 +920,7 @@ Layer 1 (Artifacts) & External states & $\boldeta$ \\
 Layer 2 (Signs) & Blanket states & $\mathcal{B} = \bs \cup \ba$ \\
 Layer 3 (Models) & Internal states & $\bmu$ \\
 Network Effect & Shared Markov blanket & $\mathcal{S}_{\text{shared}}$ \\
-$\mathcal{F}_{\text{material}}$ & Fabric free energy & $\mathcal{F}_{\text{material}}$ \\
+$\mathcal{F}_{\text{fabric}}$ & Fabric-level VFE & $\mathcal{F}_{\text{fabric}}$ (Section~\ref{sec:fmaterial}) \\
 \bottomrule
 \end{tabular}
 \end{table}
