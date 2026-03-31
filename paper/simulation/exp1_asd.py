@@ -447,24 +447,32 @@ def plot_experiment_1(results):
     ax.legend()
     ax.set_ylim(0, 1.05)
 
-    # (b) Belief evolution on GeoTIFF case
+    # (b) Per-standard accuracy comparison
     ax = axes[0, 1]
-    if results['ai']['belief_examples']:
-        beliefs = results['ai']['belief_examples']
-        steps = range(len(beliefs))
+    true_stds = np.array([a['true_standard'] for a in results['artifacts']])
+    std_names_short = [STANDARD_NAMES[s][:6] for s in range(N_STANDARDS)]
+    x_std = np.arange(N_STANDARDS)
+    width_s = 0.28
+
+    for j, (method, color, label) in enumerate([
+        ('ai', 'steelblue', 'AI'),
+        ('rule', 'gray', 'Rule'),
+        ('ml', 'darkorange', 'ML'),
+    ]):
+        correct = np.array(results[method]['correct'])
+        per_std_acc = []
         for s in range(N_STANDARDS):
-            vals = [b[0][s] for b in beliefs]
-            ax.plot(steps, vals, marker='o', markersize=4,
-                    label=STANDARD_NAMES[s], linewidth=1.5)
-        ax.set_xlabel('Inference step')
-        ax.set_ylabel('Posterior probability')
-        ax.set_title('(b) Belief evolution: ambiguous GeoTIFF artifact')
-        ax.legend(fontsize=7, ncol=2)
-        ax.set_ylim(-0.02, 1.02)
-    else:
-        ax.text(0.5, 0.5, 'No ambiguous GeoTIFF\nexample found',
-                ha='center', va='center', transform=ax.transAxes)
-        ax.set_title('(b) Belief evolution (no example)')
+            mask = true_stds == s
+            per_std_acc.append(correct[mask].mean() if mask.any() else 0)
+        ax.bar(x_std + (j - 1) * width_s, per_std_acc, width_s,
+               color=color, label=label, alpha=0.8)
+
+    ax.set_xticks(x_std)
+    ax.set_xticklabels(std_names_short, fontsize=8, rotation=30)
+    ax.set_ylabel('Accuracy')
+    ax.set_title('(b) Accuracy by file standard')
+    ax.legend(fontsize=8)
+    ax.set_ylim(0, 1.05)
 
     # (c) Confidence calibration
     ax = axes[1, 0]

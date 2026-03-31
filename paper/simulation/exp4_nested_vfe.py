@@ -126,6 +126,13 @@ def run_experiment_4(seed=42):
 
     fabric = IntegratedFabric(n_artifacts=20, n_disambig=50, n_entity=30)
 
+    # Pre-assign entity domain memberships so initial state is correct
+    er_fabric = EntityFabric(seed=seed)
+    base_idx = fabric.n_artifacts + fabric.n_disambig
+    for s in range(fabric.n_entity):
+        dom = er_fabric.sign_domain[s]
+        fabric.element_domain[base_idx + s] = 2 + min(dom, 1)
+
     # Tracking
     element_history = []
     cluster_history = []
@@ -230,13 +237,7 @@ def run_experiment_4(seed=42):
 
     # === Phase 3: Entity Resolution ===
     print("  Phase 3: Entity Resolution...")
-    er_fabric = EntityFabric(seed=seed)
-    base_idx = fabric.n_artifacts + fabric.n_disambig
-
-    # Set domain assignments for entity elements
-    for s in range(fabric.n_entity):
-        dom = er_fabric.sign_domain[s]
-        fabric.element_domain[base_idx + s] = 2 + min(dom, 1)
+    # er_fabric and base_idx already created above for domain assignments
 
     er_waves = []
     for dom in range(N_DOMAIN_SOURCES):

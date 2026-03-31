@@ -473,6 +473,11 @@ def run_experiment_2(seed=42):
     print(f"  AI mean steps: {np.mean(results['ai']['steps_used']):.1f}")
 
     results['is_polysemous'] = is_poly
+    # Fall back to first polysemous sign if Mercury not found
+    if mercury_idx is None:
+        poly_indices = np.where(is_poly)[0]
+        if len(poly_indices) > 0:
+            mercury_idx = int(poly_indices[0])
     results['mercury_idx'] = mercury_idx
 
     return results
@@ -535,7 +540,7 @@ def plot_experiment_2(results):
         ax.legend(fontsize=7)
         ax.set_ylim(-0.02, 1.02)
     else:
-        ax.text(0.5, 0.5, 'No Mercury example found',
+        ax.text(0.5, 0.5, 'No polysemous example found',
                 ha='center', va='center', transform=ax.transAxes)
         ax.set_title('(b) Belief evolution')
 
