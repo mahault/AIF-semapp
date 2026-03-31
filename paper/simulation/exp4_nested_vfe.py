@@ -114,10 +114,25 @@ def run_experiment_4(seed=42):
 
     fabric = IntegratedFabric(n_artifacts=20, n_disambig=50, n_entity=30)
 
-    # Pre-assign entity domain memberships
+    # Generate all data first so we can pre-assign true clusters
+    gen_asd = ArtifactGenerator(seed=seed, ambiguity_rate=0.30)
+    artifacts = gen_asd.generate(n=fabric.n_artifacts)
+
+    gen_signs = SignGenerator(seed=seed, n_polysemous=15, n_total=fabric.n_disambig)
+    signs = gen_signs.generate()
+
     er_fabric = EntityFabric(seed=seed)
     base_idx = fabric.n_artifacts + fabric.n_disambig
+
+    # Pre-assign TRUE clusters for all elements (not predicted — ground truth)
+    # This ensures all clusters have members from step 0, so cluster-level
+    # means decrease monotonically as uncertainty reduces.
+    for i, art in enumerate(artifacts):
+        fabric.element_cluster[i] = art['true_standard']
+    for i, sign in enumerate(signs):
+        fabric.element_cluster[fabric.n_artifacts + i] = 6 + sign['true_concept']
     for s in range(fabric.n_entity):
+        fabric.element_cluster[base_idx + s] = 11 + er_fabric.sign_entity[s]
         dom = er_fabric.sign_domain[s]
         fabric.element_domain[base_idx + s] = 2 + min(dom, 1)
 
@@ -135,8 +150,6 @@ def run_experiment_4(seed=42):
 
     # === Phase 1: ASD (2-factor model) ===
     print("  Phase 1: Artifact Standard Detection...")
-    gen_asd = ArtifactGenerator(seed=seed, ambiguity_rate=0.30)
-    artifacts = gen_asd.generate(n=fabric.n_artifacts)
 
     asd_wave = InferenceWave(
         A_np=[_expand_A(build_A_magic_1f()), _expand_A(build_A_ext_1f()),
@@ -159,8 +172,7 @@ def run_experiment_4(seed=42):
 
         # Uncertainty from standard factor (factor 1)
         uncertainty = entropy_H(qs_np[1])
-        pred = int(np.argmax(qs_np[1]))
-        fabric.update(i, uncertainty, cluster=pred)
+        fabric.update(i, uncertainty)
 
         element_history.append(fabric.element_uncertainty.copy())
         cluster_history.append(fabric.get_cluster_uncertainty())
@@ -169,9 +181,6 @@ def run_experiment_4(seed=42):
 
     # === Phase 2: Disambiguation ===
     print("  Phase 2: Ambiguity Resolution...")
-    gen_signs = SignGenerator(seed=seed, n_polysemous=15, n_total=fabric.n_disambig)
-    signs = gen_signs.generate()
-
     A_sig = build_A_signifier()
     A_dmcue = build_A_domain_cue()
     B_dis = build_B_disambig()
@@ -202,9 +211,8 @@ def run_experiment_4(seed=42):
             qs_np, _, _, _ = dis_wave.infer(obs, empirical_prior=qs_np)
 
         uncertainty = entropy_H(qs_np[0])
-        pred = int(np.argmax(qs_np[0]))
         elem_idx = fabric.n_artifacts + i
-        fabric.update(elem_idx, uncertainty, cluster=6 + pred)
+        fabric.update(elem_idx, uncertainty)
 
         element_history.append(fabric.element_uncertainty.copy())
         cluster_history.append(fabric.get_cluster_uncertainty())
@@ -277,7 +285,7 @@ def run_experiment_4(seed=42):
             uncertainty = entropy_H(qs_np[0])
             pred = int(np.argmax(qs_np[0]))
             elem_idx = base_idx + sign_idx
-            fabric.update(elem_idx, uncertainty, cluster=11 + pred)
+            fabric.update(elem_idx, uncertainty)
 
             # Confidence-gated stigmergic coupling (matches exp3)
             if other_sign is not None and step >= 50:

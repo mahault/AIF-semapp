@@ -301,6 +301,8 @@ def run_experiment_1(seed=42):
     # --- ML baseline (1-factor, no parse access) ---
     # ML sees null parse = uniform, effectively no parse info
     A_parse_null_1f = np.full((N_PARSE, N_STANDARDS), 1.0 / N_PARSE)
+    A_parse_diag_1f = build_A_parse_diagnostic()
+    D_standard = build_D_standard()
     ml_clf = MLClassifier([A_magic_1f, A_ext_1f, A_parse_null_1f, A_size_1f])
 
     # --- Rule-based baseline ---
@@ -343,7 +345,16 @@ def run_experiment_1(seed=42):
         results['ai']['predictions'].append(ai_pred)
         results['ai']['confidences'].append(ai_conf)
         results['ai']['correct'].append(ai_correct)
-        results['ai']['vfe'].append(ai_wave.vfe_history[-1])
+        # 1-factor VFE (standard only) — avoids inflated KL from parse_status
+        if action == REQUEST_PARSE:
+            vfe_1f = discrete_vfe(
+                [qs_np[1]], obs_with_parse,
+                [A_magic_1f, A_ext_1f, A_parse_diag_1f, A_size_1f], [D_standard])
+        else:
+            vfe_1f = discrete_vfe(
+                [qs_np[1]], obs_initial,
+                [A_magic_1f, A_ext_1f, A_parse_null_1f, A_size_1f], [D_standard])
+        results['ai']['vfe'].append(vfe_1f)
         results['ai']['actions'].append(action)
 
         # --- Rule-based ---
@@ -387,6 +398,37 @@ def run_experiment_1(seed=42):
 
     results['artifacts'] = artifacts
     results['is_ambiguous'] = is_ambiguous
+
+    # Save one ambiguous example where AI correctly resolved via parse
+    results['example_beliefs'] = None
+    for i, art in enumerate(artifacts):
+        if (art['is_ambiguous'] and results['ai']['correct'][i]
+                and results['ai']['actions'][i] == REQUEST_PARSE):
+            # Re-run this artifact to capture Phase 1 and Phase 2 beliefs
+            obs_init = [art['obs_magic'], art['obs_ext'], N_PARSE - 1, art['obs_size']]
+            example_wave = InferenceWave(
+                A_np=[A_magic_2f, A_ext_2f, A_parse_2f, A_size_2f],
+                B_np=B_2f, C_np=C, D_np=D_2f,
+                num_controls=[N_ACTIONS, 1], control_fac_idx=[0],
+                learn=False, gamma=16.0, seed=seed,
+                use_states_info_gain=True,
+            )
+            qs1, _, _, _ = example_wave.infer(obs_init)
+            phase1_belief = qs1[1].copy()  # standard factor
+
+            obs_parsed = [art['obs_magic'], art['obs_ext'],
+                          art['obs_parse_if_requested'], art['obs_size']]
+            emp_p = [np.array([0.0, 1.0]), qs1[1].copy()]
+            qs2, _, _, _ = example_wave.infer(obs_parsed, empirical_prior=emp_p)
+            phase2_belief = qs2[1].copy()
+
+            results['example_beliefs'] = {
+                'phase1': phase1_belief,
+                'phase2': phase2_belief,
+                'true_standard': art['true_standard'],
+                'idx': i,
+            }
+            break
 
     return results
 
@@ -447,24 +489,31 @@ def plot_experiment_1(results):
     ax.legend(fontsize=8)
     ax.set_ylim(0, 1.05)
 
-    # (c) Confidence calibration
+    # (c) Belief evolution: Phase 1 (before parse) vs Phase 2 (after parse)
     ax = axes[1, 0]
-    for method, color, label in [('ai', 'steelblue', 'AI'),
-                                  ('ml', 'darkorange', 'ML'),
-                                  ('rule', 'gray', 'Rule-based')]:
-        centers, accs, counts = confidence_calibration(
-            results[method]['confidences'], results[method]['correct'], n_bins=8
-        )
-        mask = counts > 0
-        ax.plot(centers[mask], accs[mask], 'o-', color=color, label=label,
-                linewidth=1.5, markersize=5)
-    ax.plot([0, 1], [0, 1], 'k--', alpha=0.5, label='Perfect calibration')
-    ax.set_xlabel('Predicted confidence')
-    ax.set_ylabel('Observed accuracy')
-    ax.set_title('(c) Confidence calibration')
-    ax.legend(fontsize=8)
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
+    ex = results.get('example_beliefs')
+    if ex is not None:
+        x_std = np.arange(N_STANDARDS)
+        width_b = 0.35
+        ax.bar(x_std - width_b/2, ex['phase1'], width_b,
+               color='lightcoral', label='Before parse', alpha=0.8)
+        ax.bar(x_std + width_b/2, ex['phase2'], width_b,
+               color='steelblue', label='After parse', alpha=0.8)
+        true_s = ex['true_standard']
+        ax.annotate('True', xy=(true_s, max(ex['phase2'][true_s], ex['phase1'][true_s])),
+                     xytext=(true_s, 1.05), ha='center', fontsize=9, fontweight='bold',
+                     arrowprops=dict(arrowstyle='->', color='black'))
+        ax.set_xticks(x_std)
+        ax.set_xticklabels([STANDARD_NAMES[s] for s in range(N_STANDARDS)],
+                           fontsize=8, rotation=30)
+        ax.set_ylabel('Posterior probability')
+        ax.set_title(f'(c) Belief evolution for ambiguous artifact #{ex["idx"]}')
+        ax.legend(fontsize=8)
+        ax.set_ylim(0, 1.15)
+    else:
+        ax.text(0.5, 0.5, 'No example found', ha='center', va='center',
+                transform=ax.transAxes)
+        ax.set_title('(c) Belief evolution')
 
     # (d) VFE distribution colored by correct/incorrect
     ax = axes[1, 1]

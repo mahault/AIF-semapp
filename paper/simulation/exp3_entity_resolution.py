@@ -306,7 +306,7 @@ def run_waves_on_fabric(waves, fabric, n_steps, seed, coupling=True):
     rng = np.random.RandomState(seed)
 
     all_preds = {}
-    vfe_per_step = []
+    entropy_per_step = []
     link_count = 0
 
     # Per-sign accumulated posteriors (belief accumulation across visits)
@@ -323,8 +323,6 @@ def run_waves_on_fabric(waves, fabric, n_steps, seed, coupling=True):
         })
 
     for step in range(n_steps):
-        step_vfes = []
-
         for w_idx, wave in enumerate(waves):
             dom = w_idx if w_idx < N_DOMAIN_SOURCES else 0
             domain_signs = np.where(fabric.sign_domain == dom)[0]
@@ -381,8 +379,6 @@ def run_waves_on_fabric(waves, fabric, n_steps, seed, coupling=True):
             # Store posterior for next visit to this sign
             sign_posteriors[sign_idx] = [q.copy() for q in qs_np]
 
-            step_vfes.append(wave.vfe_history[-1])
-
             # Entity prediction (from accumulated posterior)
             entity_pred = int(np.argmax(qs_np[0]))
             all_preds[sign_idx] = entity_pred
@@ -410,10 +406,14 @@ def run_waves_on_fabric(waves, fabric, n_steps, seed, coupling=True):
                                            same=True)
                         link_count += 1
 
-        if step_vfes:
-            vfe_per_step.append(np.mean(step_vfes))
+        # Mean posterior entropy across all visited signs (decreases as beliefs sharpen)
+        if sign_posteriors:
+            ents = [entropy_H(post[0]) for post in sign_posteriors.values()]
+            entropy_per_step.append(float(np.mean(ents)))
+        else:
+            entropy_per_step.append(float(np.log(N_ENTITIES)))
 
-    return all_preds, vfe_per_step, link_count
+    return all_preds, entropy_per_step, link_count
 
 
 # ============================================================
@@ -639,16 +639,16 @@ def plot_experiment_3(results):
     }
     names = ['cooperative', 'isolated', 'homogeneous', 'generalist']
 
-    # (a) Fabric VFE over time
+    # (a) Mean posterior entropy over time
     ax = axes[0, 0]
     for name in names:
-        vfe = conditions[name]['fabric_vfe']
-        if vfe:
-            ax.plot(range(len(vfe)), vfe, color=colors[name],
+        ent = conditions[name]['fabric_vfe']
+        if ent:
+            ax.plot(range(len(ent)), ent, color=colors[name],
                     label=labels[name].replace('\n', ' '), linewidth=1.5)
     ax.set_xlabel('Step')
-    ax.set_ylabel(r'Mean VFE ($\mathcal{F}$)')
-    ax.set_title('(a) Fabric-level VFE over time')
+    ax.set_ylabel(r'Mean $H[q(\mathrm{entity})]$ (nats)')
+    ax.set_title('(a) Mean entity uncertainty over time')
     ax.legend(fontsize=7)
 
     # (b) Entity resolution accuracy (with SE error bars)
@@ -715,18 +715,27 @@ def plot_experiment_3(results):
     ax.set_xticks(range(N_ENTITIES))
     ax.set_yticks(range(N_ENTITIES))
 
-    # (f) Stigmergic coupling effect
+    # (f) Stigmergic coupling effect (smoothed)
     ax = axes[1, 2]
-    coop_vfe = conditions['cooperative']['fabric_vfe']
-    iso_vfe = conditions['isolated']['fabric_vfe']
-    min_len = min(len(coop_vfe), len(iso_vfe))
+    coop_ent = conditions['cooperative']['fabric_vfe']
+    iso_ent = conditions['isolated']['fabric_vfe']
+    min_len = min(len(coop_ent), len(iso_ent))
     if min_len > 0:
-        coupling_effect = np.array(iso_vfe[:min_len]) - np.array(coop_vfe[:min_len])
-        ax.plot(range(min_len), coupling_effect, 'steelblue', linewidth=1.5)
-        ax.fill_between(range(min_len), coupling_effect, alpha=0.3, color='steelblue')
+        coupling_effect = np.array(iso_ent[:min_len]) - np.array(coop_ent[:min_len])
+        # Rolling average for visual clarity
+        window = min(10, max(1, min_len // 5))
+        if min_len > window:
+            kernel = np.ones(window) / window
+            smooth = np.convolve(coupling_effect, kernel, mode='valid')
+            x_smooth = np.arange(window - 1, min_len)
+            ax.plot(x_smooth, smooth, 'steelblue', linewidth=2)
+            ax.fill_between(x_smooth, smooth, alpha=0.3, color='steelblue')
+        else:
+            ax.plot(range(min_len), coupling_effect, 'steelblue', linewidth=1.5)
+            ax.fill_between(range(min_len), coupling_effect, alpha=0.3, color='steelblue')
         ax.axhline(y=0, color='k', linestyle='--', alpha=0.5)
     ax.set_xlabel('Step')
-    ax.set_ylabel(r'$\Delta\mathcal{F}$ (isolated $-$ cooperative)')
+    ax.set_ylabel(r'$\Delta H$ (isolated $-$ cooperative)')
     ax.set_title('(f) Stigmergic coupling benefit')
 
     fig.tight_layout()
