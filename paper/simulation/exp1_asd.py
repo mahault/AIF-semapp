@@ -399,12 +399,15 @@ def run_experiment_1(seed=42):
     results['artifacts'] = artifacts
     results['is_ambiguous'] = is_ambiguous
 
-    # Save one ambiguous example where AI correctly resolved via parse
+    # Save one ambiguous example where AI correctly resolved via parse.
+    # Require genuinely uncertain Phase 1 beliefs (max posterior < 0.60)
+    # so the figure shows ambiguity resolution, not error correction.
     results['example_beliefs'] = None
+    best_example = None
+    best_entropy = -1
     for i, art in enumerate(artifacts):
         if (art['is_ambiguous'] and results['ai']['correct'][i]
                 and results['ai']['actions'][i] == REQUEST_PARSE):
-            # Re-run this artifact to capture Phase 1 and Phase 2 beliefs
             obs_init = [art['obs_magic'], art['obs_ext'], N_PARSE - 1, art['obs_size']]
             example_wave = InferenceWave(
                 A_np=[A_magic_2f, A_ext_2f, A_parse_2f, A_size_2f],
@@ -414,7 +417,12 @@ def run_experiment_1(seed=42):
                 use_states_info_gain=True,
             )
             qs1, _, _, _ = example_wave.infer(obs_init)
-            phase1_belief = qs1[1].copy()  # standard factor
+            phase1_belief = qs1[1].copy()
+
+            # Skip if Phase 1 is already confidently right or wrong
+            phase1_max = float(np.max(phase1_belief))
+            if phase1_max > 0.55:
+                continue
 
             obs_parsed = [art['obs_magic'], art['obs_ext'],
                           art['obs_parse_if_requested'], art['obs_size']]
@@ -422,13 +430,18 @@ def run_experiment_1(seed=42):
             qs2, _, _, _ = example_wave.infer(obs_parsed, empirical_prior=emp_p)
             phase2_belief = qs2[1].copy()
 
-            results['example_beliefs'] = {
-                'phase1': phase1_belief,
-                'phase2': phase2_belief,
-                'true_standard': art['true_standard'],
-                'idx': i,
-            }
-            break
+            # Prefer examples with highest Phase 1 entropy (most uncertain)
+            from common import entropy_H
+            h = entropy_H(phase1_belief)
+            if h > best_entropy:
+                best_entropy = h
+                best_example = {
+                    'phase1': phase1_belief,
+                    'phase2': phase2_belief,
+                    'true_standard': art['true_standard'],
+                    'idx': i,
+                }
+    results['example_beliefs'] = best_example
 
     return results
 
